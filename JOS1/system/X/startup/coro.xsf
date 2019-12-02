@@ -1,0 +1,6 @@
+local co = {}
+local eventQueue = {}
+function co.yield(...)
+
+
+return {co,eventQueue}

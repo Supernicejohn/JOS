@@ -1,0 +1,58 @@
+local stream = {IN = {queue = {}}, OUT = {queue = {}}, ERR = {queue = {}}, pop = 0, push = 0, flush = 0, peek = 0}
+
+function stream.isStream(str)
+	if (str == stream.IN or str == stream.ERR or str == stream.OUT) then
+		return true
+	end
+	for k,v in pairs(stream) do
+		if str==stream[k] and (type(str) == "table") then
+			return true
+		end
+	end
+	return false
+end
+function stream.pop(str)
+	if not stream.isStream(str) then
+		stream.push(stream.ERR,XIO_STREAM_INVALID)
+		return XIO_STREAM_INVALID
+	end
+	if #str.queue > 0 then
+		local val = str.queue[1]
+		for i=1,#str.queue-1 do
+			str[i] = str[i+1]
+		end
+		str.queue[#str.queue] = nil
+		return val
+	else
+		return XIO_STREAM_EMPTY
+	end
+end
+function stream.push(str,val)
+	if not stream.isStream(str) then
+		stream.push(stream.ERR,XIO_STREAM_INVALID)
+		return XIO_STREAM_INVALID
+	end
+	str.queue[#str.queue+1] = val
+	return XIO_STREAM_SUCCESS
+end
+function stream.peek(str,index)
+	if not stream.isStream(str) then
+		stream.push(stream.ERR,XIO_STREAM_INVALID)
+		return XIO_STREAM_INVALID
+	end
+	if #str.queue >= index then
+		return str[index]
+	else
+		return XIO_STREAM_EMPTY
+	end
+end
+function stream.flush(str)
+	if not stream.isStream(str) then
+		stream.push(stream.ERR,XIO_STREAM_INVALID)
+		return XIO_STREAM_INVALID
+	end
+	str.queue = {}
+	return XIO_STREAM_SUCCESS
+end
+
+return stream

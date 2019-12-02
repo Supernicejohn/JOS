@@ -1,0 +1,15 @@
+__XREG = {
+	BASETERM = {
+		W = 51,
+		H = 19
+	},
+	SETTINGS = {
+		DEFAULTSHELL = "system/X/utility/shell.xpf",
+		CURSORBLINKINTERVAL = 0.3
+		
+	},
+	INTERNAL = {
+		FORCESYNC = false
+	}
+
+}
