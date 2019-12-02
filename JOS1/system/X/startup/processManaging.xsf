@@ -1,0 +1,19 @@
+local pm = {currentProcess = false}
+
+function pm.send(List, PID, Event)
+	coroutine.resume(List[PID], Event)
+end
+
+function pm.sigterm(List, PID)
+	pm.send(Process, "terminate")
+end
+
+function pm.kill(List, PID)
+	List[PID] = nil
+end 
+
+function pm.status(List, PID)
+	return coroutine.status(List[PID])
+end
+
+return pm

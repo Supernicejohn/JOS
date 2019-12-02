@@ -1,0 +1,30 @@
+local Hooks = {Manager = {Run = 0}, every = {}, sec = {}, onFS = {}, onUserEvent = {}} -- lists that get called when corresponding condition is met
+function Hooks.Manager.Run(condition)
+	if condition==XHOOKS_RUN_EVERY then -- every 0.05 sec
+		for i=1, i<=#Hooks.every do
+			Hooks.every[i]()
+		end
+	elseif condition==XHOOKS_RUN_SECOND then -- every 1 sec
+		for i=1, i<=#Hooks.sec do
+			Hooks.sec[i]()
+		end
+	elseif condition==XHOOKS_RUN_ON_FS then -- every fs call
+		for i=1, i<=#Hooks.onFS do
+			Hooks.onFS[i]()
+		end
+	elseif condition==XHOOKS_RUN_ON_USER then -- every user event spawned
+		for i=1, i<=#Hooks.onUserEvent do
+			Hooks.onUserEvent[i]()
+		end
+	end
+end
+Hooks.Manager.timer = 0
+function Hooks.every._incTimer()
+	Hooks.Manager.timer = Hooks.Manager.timer + 0.05
+	if Hooks.Manager.timer >= 1 then
+		Hooks.Manager.timer = 0
+		Hooks.Manager.Run(XHOOKS_RUN_SECOND)
+	end
+end
+
+return Hooks

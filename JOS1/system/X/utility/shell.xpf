@@ -1,0 +1,35 @@
+-- x system default shell
+local cursor = {x=1, y=1, offsetX=0, char="_"}
+local startPath = fs.getDir(shell.getRunningProgram())
+local lines = {}
+local termSize = {}
+termSize.x, termSize.y = term.getSize()
+
+
+local blinkTimer = os.startTimer(__XREG.SETTINGS.CURSORBLINKINTERVAL)
+while true do
+	local e = {coroutine.yield()}
+	if e[1] == "char" then
+		lines[cursor.y] = lines[cursor.y]:sub(1,cursor.x-1)..e[2]..lines[cursor.y]:sub(cursor.x,#lines[cursor.y])
+	end
+	if e[1] == "key" then
+		if e[2] == keys.up then
+			
+		end
+	end
+	if e[1] == "timer" then
+		if e[2] == blinkTimer then
+			blinkTimer = os.startTimer(__XREG.SETTINGS.CURSORBLINKINTERVAL)
+			cursor.blink = not cursor.blink
+		end
+	end
+	for i=cursor.y,termSize.y do
+		term.setCursorPos(1,termSize.y-i+1)
+		term.clearLine()
+		term.write(lines[i]:sub(cursor.offsetX+1,cursor.offsetX+termSize.x))
+	end
+	if cursor.blink then
+		term.setCursorPos(cursor.x-cursor.offsetX-1,termSize.y)
+		term.write(cursor.char)
+	end
+end

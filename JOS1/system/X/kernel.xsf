@@ -1,0 +1,127 @@
+local osPath = "/JOS1/system/X"
+
+local Windows = {}
+local Processes = {[0] = "kernel_task"}
+local ProcessManager = {currentProcess = false}
+local ProcessTimers = {} -- keeps list on what process should recieve timer event
+local Hooks = {Manager = {Run = 0}, every = {}, sec = {}, onFS = {}, onUserEvent = {}} -- lists that get called when corresponding condition is met
+-- every = every 0.05 seconds.  sec = every second.  onFS = when fs used.  onUserEvent = when user creates event.
+local defaultOS = {}
+local defaultFS = {}
+local defaultIO = {}
+local defaultTERM = {}
+local function dCopy(src,target) -- not safe
+    for k,v in pairs(src) do
+        if type(v) ~= "table" then
+            target[k] = v
+        else
+            target[k] = {}
+            dCopy(src[k],target[k])
+        end 
+    end
+end
+dCopy(_G.os,defaultOS)
+dCopy(_G.fs,defaultFS)
+dCopy(_G.io,defaultIO)
+dCopy(_G.term,defaultTERM)
+
+
+
+local stream = {IN = {queue = {}}, OUT = {queue = {}}, ERR = {queue = {}}, pop = 0, push = 0, flush = 0, peek = 0}
+Xfs = {open = 0, exists = 0}
+Xos = {OSObjects = {Desktop = {PID=-1, Window = -1}}}
+
+local function runStartupFiles()
+    loadfile(osPath.."/startup/system_constants.xsf")()
+    loadfile(osPath.."/startup/system_registry.xsf")()
+    stream = loadfile(osPath.."/startup/stream.xsf")()
+    Xsf = loadfile(osPath.."/startup/filesystem.xsf")()
+    Xos = loadfile(osPath.."/startup/os.xsf")()
+    Hooks = loadfile(osPath.."/startup/hooks.xsf")()
+    ProcessManager = loadfile(osPath.."/startup/processManaging.xsf")()
+end
+
+local function runFile(path) 
+    local pid = false
+    for i=1,XPROCESS_LIMIT do
+        if Processes[i] == nil then
+            pid = i
+            break
+        end
+    end
+    if pid then
+        if Xfs.exists(path) and not Xfs.isDir(path) then
+            local p,err = assert(loadfile(path))
+            if p then
+                Processes[pid] = coroutine.create(p)
+                return pid
+            else
+                stream.push(stream.ERR,"could not run file: "..path)
+            end
+        else
+            stream.push(stream.ERR,"not a file: "..path)
+        end
+    else
+        stream.push(stream.ERR,"process limit reached, did not run file: "..path)
+    end
+end
+
+
+
+
+local function getEventData()
+    local e = {coroutine.yield()}
+    local data = {}
+    if e[1] == "mouse_click" or e[1] == "mouse_scroll" then
+        data.isMouseEvent = true
+    end
+    if e[1] == "key" or e[1] == "key_up" then
+        data.isKeyEvent = true
+    end
+    if e[1] == "timer" then -- custom timer code, wrapper over default os.startTimer.
+        data.isTimerEvent = true
+        data.timerPID = ProcessTimers[e[2]] -- unique identifier used as index.
+        ProcessTimers[e[2]] = nil -- identical timer event cannot be fired again, remove index.
+    end    
+
+    if data.isKeyEvent or data.isMouseEvent then
+        data.activeWindowEvent = true
+    end
+    data.event = {unpack(e)}
+    
+    return data
+end    
+
+
+
+
+
+
+
+
+
+runStartupFiles()
+ProcessTimers[defaultOS.startTimer(0.05)] = 0
+
+while true do
+    local EventData = getEventData()
+    if EventData.isTimerEvent and EventData.timerPID == 0 then
+        ProcessTimers[defaultOS.startTimer(0.05)] = 0
+        Hooks.Manager.Run(1)
+    elseif EventData.activeWindowEvent then
+        ProcessManager.currentProcess = Windows[0].pID
+        coroutine.resume(Processes[Windows[0].pID],EventData.event)
+    else
+        for i=0, i<#Processes do
+            ProcessManager.currentProcess = i
+
+            coroutine.resume(Processes[i],EventData.event)
+        end
+    end
+end
+
+
+
+
+
+

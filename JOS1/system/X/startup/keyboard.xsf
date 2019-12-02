@@ -1,0 +1,53 @@
+local key = {keys = {}}
+
+function key.isDown(keycode)
+	if key.keys[keycode] and key[keys].pressed then
+		return true
+	else
+		return false
+	end
+end
+
+function key.isHeld(keycode)
+	if key.keys[keycode] and key.keys[keycode].held then
+		return true
+	else
+		return false
+	end
+end
+
+function key.isHit(keycode)
+	if key.isDown(keycode) and not key.isHeld(keycode) then
+		return true
+	else
+		return false
+	end
+end
+
+function key.getAsChar(keycode)
+	if keys[keycode] and #keys[keycode] == 1 then
+		return keys[keycode]
+	else
+		return nil
+	end
+end
+
+function key.parseEvent(e)
+	if e[1] == "key" then
+		key.keys[e[2]] = {pressed = true, held = e[3]}
+		if key.__stream then
+			stream.push(key.getAsChar(key.__stream))
+		end
+	elseif e[1] == "key_up" then
+		key.keys[e[2]] = {pressed = false, held = false}
+	end
+end
+
+function key.streamTo(stream) -- probably stream.IN
+	if stream and type(stream) == "table" then
+		key.__stream = stream
+		return true
+	else
+		return false
+	end
+end

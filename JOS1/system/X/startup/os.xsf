@@ -1,0 +1,14 @@
+Xos = {OSObjects = {Desktop = {PID=-1, Window = -1}}}
+-- override standard os.startTimer to only resume event for correct program
+function Xos.startTimer(time)
+	if ProcessManager.currentProcess then
+		local num = defaultOS.startTimer(time)
+		ProcessTimers[UID] = ProcessManager.currentProcess
+		return num
+	else
+		streams.push(streams.ERR,XSYSTEM_SEVERE_ERROR..": No process running when call to startTimer was processed")
+		return XSYSTEM_SEVERE_ERROR
+	end
+end
+
+return Xos

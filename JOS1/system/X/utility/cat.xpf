@@ -1,0 +1,58 @@
+local args = {...}
+local xWidth = term.getSize()
+local hex = {0,1,2,3,4,5,6,7,8,9,"A","B","C","D","E","F"}
+if #args == 0 then
+	error("Usage: cat <options> [file]")
+end
+local options = {hex = false}
+local fileName = args[#args]
+for i=1,#args-1 do
+	for k,v in pairs(options) do
+		if args[i]:find("-"..k) then
+			options[k] = true
+		end
+	end
+end
+local file
+if fs.exists(fileName) and not fs.isDir(fileName) then
+	if options.hex then
+		file = fs.open(fileName,"rb")
+	else
+		file = fs.open(fileName,"r")
+	end
+else
+	error(fileName.." can not be opened")
+end
+if not options.hex then
+	local line = "1: "
+	local ln = 1
+	while true do
+		line = file.readLine()
+		if line==nil then
+			break
+		end
+		line = ""..ln..": "..line
+		ln = ln + 1
+		print(line)
+	end
+else
+	local line = "1: "
+	local ln = 1
+	while true do
+		if #line+3>xWidth then
+			ln = ln + 1
+			print(line)
+			line = ""..ln..": "
+		end
+		local v = file.read()
+		if v then
+			--print(v/16-(v%16)/16)
+			--print("   "..v%16)
+			line = line..hex[1+(v/16-(v%16)/16)]..hex[1+(v%16)].." "
+		else
+			break
+		end
+	end
+	print(line)
+end
+file.close()
