@@ -1,0 +1,6 @@
+local PATH = "/root/" -- path from / to os root-mount
+-- now PATH will be mounted as fs root,
+-- however a superuser will be able to mount / itself as a location
+-- in the coreFs
+
+return loadfile(fs.combine(PATH,"/system/kernal.sys"))(PATH)

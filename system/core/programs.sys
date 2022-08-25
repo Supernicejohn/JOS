@@ -1,0 +1,85 @@
+local args = {...}
+local system = args[1]
+
+local tbl = {
+    tasks = {}, -- literal coroutines
+    pids = {}, -- number = task-index, initially the same-1
+    currentFocused = 0
+}
+tbl.resume = function(pid,event)
+    if tbl.pids[pid] == -1 then
+        print("PID:"..pid.." has no program")
+        return
+    end
+    local program = tbl.tasks[tbl.pids[pid]]
+    local stat = coroutine.status(program)
+    if stat == "suspended" then
+        coroutine.resume(program,table.unpack(event))
+    elseif stat == "dead" then
+        print("CORO DIED")
+        if tbl.currentFocused == pid then
+            tbl.currentFocused = 0
+        end
+        tbl.pids[pid] = -1
+    end
+end
+tbl.isAlive = function(pid)
+    if tbl.pids[pid] < 0 then
+        return false
+    end
+    local status = coroutine.status(tbl.tasks[tbl.pids[pid]])
+    if status == "dead" then
+        return false
+    end
+    return true
+end
+tbl.getProgramFromPID = function(pid)
+    return tbl.tasks[tbl.pids[pid]]
+end
+tbl.runProgram = function(pathArgs, forcedPID)
+    local space = pathArgs:find("%s") -- find first space
+    if not space then
+        space = #pathArgs+1
+    end
+    local path = pathArgs:sub(1,space-1)
+    local arguments = pathArgs:sub(space+1,#pathArgs)
+    local realPath = system.core.coreFs.getRootedPath(path)
+    if not system.core.coreFs.exists(realPath) then
+        error("file does not exist")
+    end
+    local func = function()
+        local env = {}
+        env.arg = {path}
+        env.shell = system.core.shellCompatibility.getShellInstance(path)
+        os.run(env,realPath,arguments)
+    end
+    local coro = coroutine.create(func)
+    if coro then
+        print("istat:"..coroutine.status(coro))
+        tbl.tasks[#tbl.tasks+1] = coro
+        local highest = 0
+        for k,v in pairs(tbl.pids) do
+            if k>highest then
+                highest = k
+            end
+        end
+        local pid = highest+1
+        if forcedPID then
+            pid = forcedPID
+        end
+        system.core.wm.createWindow(pid,false,false)
+        tbl.pids[pid] = #tbl.tasks
+    else
+        error("could not create coroutine")
+    end
+end
+tbl.setFocusedPID = function(pid)
+    tbl.currentFocused = pid
+end
+tbl.getFocusedPID = function(pid)
+    return tbl.currentFocused
+end
+tbl.getCurrentPID = tbl.getFocusedPID
+return tbl
+
+

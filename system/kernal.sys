@@ -1,0 +1,50 @@
+-- JOS v1, CC:Tweaked version, optimized for 80-column modes
+local args = {...} --args[1] needs to be path to /root/ from boot
+-- preloading
+local system = {}
+local coreFs = loadfile(fs.combine(args[1],"/system/core/fs.sys"))()
+coreFs.mountRoot(args[1])
+local partloader = loadfile(coreFs.getRootedPath(
+    "/system/core/partloader.sys"))(system)
+-- coreFs needed for file loading, partloader for core implementations
+-- all system values and functions, invisible to programs
+system.core = {}
+-- kernal functions, like the main event loop
+system.users = { -- load from files
+    [0] = {}, -- system
+    [1] = {}, -- super
+}
+-- user stuff
+system.core.internal = {}
+-- kernal internals, like resume the kernal with an event
+system.core.coreFs = coreFs
+-- kernal loading
+system.core.partloader = partloader
+system.core.partloader.initPart("peripheral.p")
+system.core.partloader.initPart("event.p")
+system.core.partloader.initPart("programs.p")
+system.core.partloader.initPart("shellCompat.p")
+--system.core.wm = loadfile(coreFs.getRootedPath(
+--    "system/wms/swin.sys"))(system)
+system.core.partloader.initPart("wm.p")
+--system.core.wm.createWindow(1,term.current(),false)
+
+
+local kernalProcess = function()
+    while true do
+        system.core.internal.resume({coroutine.yield()})
+    end
+end
+system.core.programs.runProgram("/system/d/kernal.d",0) -- 0 is kernal PID
+
+-- example program
+system.core.programs.runProgram("bin/example.lua")
+system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
+
+--
+system.core.wm.setFocus(1)
+
+while true do
+    system.core.event.popEvent() -- yields
+    --print("event looped")
+end

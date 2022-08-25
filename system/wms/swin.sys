@@ -1,0 +1,60 @@
+local args = {...}
+local system = args[1]
+-- simplest possible window arrangement with a single window, no UI elems
+local tbl = {
+    win = "",
+    parentTerm = term.current()
+}
+tbl.setFocusedProgram = function(winId)
+    --temp
+    if not tbl.win.pid then return end
+    local pid = tbl.win.pid
+    system.core.programs.setFocusedPID(pid)
+end
+tbl.createWindow = function(pid,parent,isMaximized)
+    local winTerm = window.create(parent,20,20,20,20)
+    tbl.win = {
+        term = winTerm,
+        pid = pid
+    }
+end
+local resumeWithEvent = function(event)
+    if not tbl.win.pid then return end
+    if system.core.programs.pids[system.core.wm.win.pid] == -1 then
+        system.core.wm.exitWM()
+        return
+    end
+    term.redirect(system.core.wm.win.term)
+    system.core.programs.resume(tbl.win.pid,event)
+    term.redirect(system.core.wm.parentTerm)
+end
+tbl.onMouseEvent = function(event)
+    if not tbl.win.pid then return end
+    -- event has to be relative to parentTerm
+    local x, y = event[3], event[4]
+    local wx, wy = tbl.win.term.getPosition()
+    local ww, wh = tbl.win.term.getSize()
+    if x>=wx and x<wx+ww and y>=wy and y<wy+wh then
+        -- click was on the *one* window, pass event modified
+        event[3] = x-wx+1
+        event[4] = y-wy+1
+        resumeWithEvent(event)
+    end
+    -- otherwise do nothing for now
+end
+tbl.onKeyEvent = function(event)
+    resumeWithEvent(event)
+end
+tbl.onTerminateEvent = function(event)
+    if not tbl.win.pid then return end
+    resumeWithEvent(event)
+    if system.core.programs.pids[system.core.wm.win.pid] == -1 then
+        system.core.wm.exitWM()
+    end
+end
+tbl.exitWM = function()
+    tbl.win.pid = nil
+end
+
+
+return tbl

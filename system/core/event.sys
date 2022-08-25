@@ -1,0 +1,81 @@
+local args = {...}
+local system = args[1] -- internal system table, passed as arg
+
+local tbl = {
+    systemTimers = {}
+}
+
+local consumeKeyEvent = function(event)
+    if event[1] == "key" then
+        if event[3] then
+            system.core.peripheral.keyboard.onKeyHeld(event[2])
+        else
+            system.core.peripheral.keyboard.onKeyDown(event[2])
+        end
+    elseif event[2] == "key_down" then
+        system.core.peripheral.keyboard.onKeyUp(event[2])
+    end
+    system.core.wm.onKeyEvent(event)
+end
+local consumeCharEvent = function(event)
+    system.core.wm.onCharEvent(event)
+end
+local consumeTerminateEvent = function(event)
+    local pid = system.core.programs.getFocusedPID()
+    if pid == 0 then
+        system.core.programs.resume(pid,event)
+    else
+        system.core.wm.onTerminateEvent(event)
+    end
+end
+local consumeMouseEvent = function(event)
+    system.core.wm.onMouseEvent(event) -- may pass execution to program
+end
+local consumeTimerEvent = function(event)
+    if tbl.systemTimers[event[2]] then
+        --tbl.handleSystemTimer(event)
+    else
+        -- TEMP: do this task-by-task later
+        system.core.wm.onTimerEvent(event)
+    end
+end
+local consumeOtherEvent = function(event)
+    print("no handler:"..event[1])
+end
+tbl.handles = {
+    key = consumeKeyEvent,
+    key_up = consumeKeyEvent,
+    char = consumeCharEvent,
+    mouse_click = consumeMouseEvent,
+    mouse_up = consumeMouseEvent,
+    mouse_drag = consumeMouseEvent,
+    mouse_scroll = consumeMouseEvent,
+    timer = consumeTimerEvent,
+    terminate = consumeTerminateEvent,
+    default = consumeOtherEvent
+}
+tbl.queue = {}
+tbl.popEvent = function() -- event queue only used if not empty
+    local event = false
+    if #tbl.queue == 0 then
+        event = {coroutine.yield()}
+    else
+        event = tbl.queue[1]
+        --table.remove(tbl,1) --hmmmmm
+        for i=1, #tbl.queue-1 do
+            tbl.queue[i] = tbl.queue[i+1]
+        end
+        tbl.queue[#tbl.queue] = nil
+    end
+    
+    if tbl.handles[event[1]] then
+        -- event handler exists
+        tbl.handles[event[1]](event)
+    else
+        tbl.handles.default(event)
+    end
+end
+tbl.pushEvent = function(pid,event)
+    tbl.queue[#tbl.queue+1] = event
+end
+return tbl

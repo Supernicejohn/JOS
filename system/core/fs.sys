@@ -1,0 +1,61 @@
+local tbl = {}
+tbl.values = {
+    locations = {}
+}
+tbl.mount = function(value,path)
+    tbl.values.locations[value] = path
+end
+tbl.mountRoot = function(path) -- '/'-originated path
+    -- this ensures that nothing will see anything below path.
+    tbl.mount("root",path)
+end
+tbl.unmount = function(value)
+    tbl.values.locations[value] = nil
+end
+tbl.getFsInstance = function(userId)
+    -- TEMP, return unpatched fs
+    return _G.fs
+    -- later, return a version of fs with permissions of the
+    -- specified user.
+end
+-- protects against ".."-ing below the root
+tbl.getMountedPath = function(value,path)
+    local inPath = ""
+    local res = "/"
+    if path:sub(1,1)=="/" then
+        inPath = path:sub(2).."/"
+    else
+        inPath = path.."/"
+    end
+    while #inPath > 0 do
+        local first = inPath:find("/") -- find next delim
+        if not first then
+            break
+        end
+        local name = inPath:sub(1,first-1)
+        inPath = inPath:sub(first+1)
+        if name == ".." then
+            local parts = string.gfind(res,"/%a/")
+            res = "/"
+            for i=1,#parts-1 do
+                res = fs.combine(res,parts[i])
+            end -- concat all but the last true path item
+        elseif name ~= "." then
+            res = fs.combine(res,name)
+        end
+    end
+    res = fs.combine(tbl.values.locations[value],res)
+    return res
+end
+tbl.getRootedPath = function(path)
+    return tbl.getMountedPath("root",path)
+end
+local meta = {
+    __index = function(indexedTable,key)
+        if fs[key] then
+            return fs[key]
+        end
+    end
+}
+setmetatable(tbl,meta)
+return tbl

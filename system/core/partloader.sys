@@ -1,0 +1,138 @@
+local args = {...}
+local system = args[1]
+local folder = "/system/p"
+-- partloader loads core components
+local tbl = {
+    logs = {_partloader = {}},
+    parts = {},
+}
+local partIdents = {
+    "User",
+    "Path",
+    "Policy",
+    "Log"
+}
+local voidTable = {__index = function(key,indexTable) end, __metatable = ""}
+
+tbl.readPart = function(name)
+    local path = system.core.coreFs.combine(folder,name)
+    path = system.core.coreFs.getRootedPath(path)
+    if not system.core.coreFs.exists(path) then
+        tbl.logError("_partloader","no such file: "..name)
+        return false
+    end
+    local file = system.core.coreFs.open(path,"r")
+    if not file then
+        tbl.logError("_partloader","error reading file"..path)
+        return
+    end
+    local lines = {}
+    while true do
+        local line = file.readLine()
+        if not line then
+            file.close()
+            break
+        end
+        lines[#lines+1] = line
+    end
+    local ret = {Description = ""}
+    local state = nil
+    for i=1,#lines do
+        if lines[i]:sub(1,5)=="[Part" then
+            state = "part"
+            lines[i] = lines[i]:sub(7,-2)..""
+            ret.Name = string.match(lines[i],"[%w_]+")
+        elseif lines[i]=="[Description]" then
+            state = "description"
+        else
+            local isKey = false
+            for j=1,#partIdents do
+                if lines[i]:find(partIdents[j])==1 then
+                    --print(lines[i])
+                    --print(partIdents[i])
+                    print(lines[i]:find(partIdents[j]))
+                    isKey = partIdents[j]
+                end
+            end
+            if isKey then
+                ret[isKey] = string.match(lines[i],"%s+[%w%.%/_]+"):sub(2)
+            elseif state == "description" then
+                ret.Description = ret.Description.."\n"..lines[i]
+            end
+        end
+    end
+    for k,v in pairs(ret) do
+        print(k..", "..v)
+    end
+    tbl.parts[ret.Name] = ret
+    return ret.Name
+end
+tbl.enablePart = function(partName)
+    local pid = 0
+    if system.core.programs then -- kernal will enable this before 
+                                 -- any programs can run
+        pid = system.core.programs.getFocusedPID()
+    end
+    if pid ~= 0 then
+        error("Attempt to enable part from non-kernal process")
+        return
+    end
+    if not tbl.parts[partName] then
+        tbl.logError("_partloader","part "..partName.." is not loaded")
+    end
+    local partFile = loadfile(system.core.coreFs.getRootedPath(
+        tbl.parts[partName].Path))
+    tbl.parts[partName].Mod = partFile(system)
+    system.core[partName] = tbl.parts[partName].Mod
+    tbl.logMessage(partName,"loaded")
+end
+tbl.disablePart = function(partName)
+    local pid = 0
+    if system.core.programs then
+        pid = system.core.programs.getFocusedPID()
+    end
+    if pid ~= 0 then
+        error("Attempt to disable part from non-kernal process")
+        return
+    end
+    system.core[partName] = {}
+    setmetatable(system.core[partName],voidTable)
+    tbl.logMessage(partName,"disabled")
+end
+tbl.reloadPart = function(partName) -- re-read part first
+    local pid = 0
+    if system.core.programs then
+        pid = system.core.programs.getFocusedPID()
+    end
+    if pid ~= 0 then
+        error("Attempt to reload part from non-kernal process")
+    end
+    tbl.disablePart(partName)
+    tbl.enablePart(partName)
+    tbl.logMessage(partName,"reloaded")
+end
+tbl.initPart = function(name)
+    local partName = tbl.readPart(name)
+    tbl.enablePart(partName)
+end
+tbl.logMessage = function(part,msg)
+    if not tbl.logs[part] then
+        tbl.logs[part] = {}
+    end
+    tbl.logs[part][#tbl.logs[part]+1] = msg
+end
+tbl.logError = function(part,msg)
+    tbl.logMessage(part,"ERROR: "..msg)
+end
+
+return tbl
+
+
+
+
+
+
+
+
+
+

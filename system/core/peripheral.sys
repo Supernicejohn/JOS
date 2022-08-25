@@ -1,0 +1,51 @@
+local args = {...}
+local system = args[1]
+-- currently only supports left side modifiers, add duplicates
+-- to the combos table to change
+local tbl = {}
+tbl.keyboard = {}
+tbl.keyboard.combos = { -- order matters!
+    [keys.leftCtrl] = {
+        [keys.leftShift] = { -- system keycombo
+            [keys.z] = "system_home" -- home
+        },
+        [keys.c] = "copy",
+        [keys.v] = "paste",
+        [keys.x] = "cut",
+        [keys.z] = "undo",
+        [keys.y] = "redo"
+    }
+}
+tbl.keyboard.held = {} -- held keys
+tbl.keyboard.onKeyDown = function(keyId)
+    tbl.keyboard.held[keyId] = 1 -- TODO: duration
+end
+tbl.keyboard.onKeyHeld = function(keyId)
+    tbl.keyboard.held[keyId] = 2
+end
+tbl.keyboard.onKeyUp = function(keyId)
+    tbl.keyboard.held[keyId] = nil
+end
+local function recursiveCheck(comboTable,val)
+    if type(comboTable) ~= "table" then
+        if val == 1 then
+            return comboTable
+        else
+            return -- only return combo on *press*, not held
+        end
+    end
+    for k,v in pairs(comboTable) do
+        if tbl.keyboard.held[k] then
+            return recursiveCheck(v,tbl.keyboard.held[k])
+        end
+    end
+    -- if this is reached, not a complete combo, exit.
+end
+tbl.keyboard.isKeyCombo = function()
+    local res = recursiveCheck(tbl.keyboard.combos)
+    if res then
+        system.core.event.pushEvent(0,{"system_keycombo",res},true)
+    end
+end
+
+return tbl

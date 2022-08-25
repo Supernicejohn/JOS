@@ -1,0 +1,28 @@
+local args = {...}
+local system = args[1]
+
+local tbl = {}
+
+tbl.getShellInstance = function(path)
+    local comp = {}
+    comp.exit = function() end
+    comp.dir = function() return system.core.coreFs.getDir(path) end
+    comp.setDir = function() end -- do not set
+    comp.path = function() return "" end
+    comp.setPath = function() end
+    comp.resolve = function(a) return a end
+    comp.resolveProgram = function(a) return a end
+    comp.aliases = function() return {} end
+    comp.setAlias = function() end
+    comp.clearAlias = function() end
+    comp.programs = function() return {} end
+    comp.getRunningProgram = function() return path end
+    comp.run = function() end -- do not run, yet
+    comp.complete = function() return {} end
+    comp.completeProgram = function() return {} end
+    comp.setCompletionFunction = function() end
+    comp.getCompletionInfo = function() return {} end
+    return comp
+end
+
+return tbl

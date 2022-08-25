@@ -1,0 +1,350 @@
+local args = {...}
+local system = args[1]
+-- tbl
+--    windows
+--        [x]
+--            pid
+--            window - wrapper with UI
+--            term - the program's visible window
+--            defaultDimensions
+--            z - order/height
+--            state - "normal", "maximized", "minimized"
+--    parentTerm
+local tbl = {
+    windows = {},
+    parentTerm = term.current(),
+    mouseState = false
+}
+tbl.setFocusedWindow = function(winId)
+    local pid = tbl.windows[winId].pid
+    system.core.programs.setFocusedPID(pid)
+end
+tbl.createWindow = function(pid,parentTerm,isMaximized)
+    local parent = ""
+    if not parentTerm then
+        parent = tbl.parentTerm
+    else
+        parent = parentTerm
+    end
+    local x = isMaximized and 1 or 5
+    local y = x
+    local w,h = parent.getSize()
+    if not isMaximized then w=51; h=18; end --leave 51,17 for compatibility
+    local wrapWin = window.create(parent,x,y,w,h)
+    local win = window.create(wrapWin,1,2,w,h-1)
+    local index = #tbl.windows+1
+    tbl.windows[index] = {
+        pid = pid,
+        term = win,
+        window = wrapWin,
+        defaultDimensions = {x=x,y=y,w=w,h=h},
+        z = 1,
+        state = "normal",
+        name = "test"
+    }
+    for i=1,#tbl.windows do
+        if i ~= index and tbl.windows[i] then
+            tbl.windows[i].z = tbl.windows[i].z + 1
+        end
+    end
+    tbl.windows[index].name = tbl.windows[index].name..
+        "pid:"..tbl.windows[index].pid
+    --tbl.drawTopBar(index)
+    tbl.redrawWindows()
+end
+tbl.getWindowIndex = function(pid)
+    for i=1,#tbl.windows do
+        if tbl.windows[i] and tbl.windows[i].pid == pid then
+            return i 
+        end
+    end
+end
+tbl.removeWindow = function(pid)
+    local index = tbl.getWindowIndex(pid)
+    local z = tbl.windows[index].z
+    for i=1,#tbl.windows do
+        if i ~= index and tbl.windows[i].z > z then
+            tbl.windows[i].z = tbl.windows[i].z - 1
+        end
+    end
+    for i=index,#tbl.windows-1 do
+        tbl.windows[i] = tbl.windows[i+1]
+    end
+    tbl.windows[#tbl.windows] = nil
+end
+tbl.setFocus = function(pid)
+    local newWin = tbl.getWindowIndex(pid)
+    if not newWin or not tbl.windows[newWin] then
+        return
+    end
+    for i=1,#tbl.windows do
+        if tbl.windows[i] and tbl.windows[newWin].z and i ~= newWin then
+            if tbl.windows[i].z < tbl.windows[newWin].z then
+                tbl.windows[i].z = tbl.windows[i].z + 1
+            end
+        end
+    end
+    tbl.windows[newWin].z = 1
+    tbl.drawTopBar(newWin)
+    tbl.redrawTerm(newWin)
+end
+tbl.setDefaultDimensions = function(windowIndex)
+    local x,y = tbl.windows[windowIndex].window.getPosition()
+    local w,h = tbl.windows[windowIndex].window.getSize()
+    tbl.windows[windowIndex].defaultDimensions = {x=x,y=y,w=w,h=h}
+end
+tbl.minimize = function(windowIndex)
+    tbl.setDefaultDimensions(windowIndex)
+    local dim = tbl.windows[windowIndex].defaultDimensions
+    local x = dim.x
+    local y = dim.y
+    local w = dim.w
+    tbl.windows[windowIndex].window.reposition(x,y,w,1)
+    tbl.windows[windowIndex].state = "minimized"
+    tbl.redrawWindows()
+end
+tbl.maximize = function(windowIndex)
+    local win = tbl.windows[windowIndex]
+    local w,h = tbl.parentTerm.getSize()
+    tbl.setDefaultDimensions(windowIndex)
+    win.window.reposition(1,1,w,h)
+    win.term.reposition(1,2,w,h-1)
+    win.state = "maximized"
+    tbl.redrawWindows()
+    
+    tbl.onPassableEvent({"term_resize",w,h-1})
+    tbl.onPassableEvent({tbl.windows[windowIndex].state})
+    --TODO: pass resize event
+end
+tbl.defaultSize = function(windowIndex)
+    local win = tbl.windows[windowIndex]
+    local h = win.defaultDimensions.h
+    local w = win.defaultDimensions.w
+    if tbl.windows[windowIndex].state ~= "maximized" then
+        tbl.setDefaultDimensions(windowIndex)
+    end
+    win.defaultDimensions.h = h
+    win.defaultDimensions.w = w
+    local size = win.defaultDimensions
+    win.window.reposition(size.x,size.y,size.w,size.h)
+    win.term.reposition(1,2,size.w,size.h-1)
+    tbl.redrawWindows()
+    win.state = "normal"
+    tbl.onPassableEvent({"term_resize",size.w,size.h-1})
+end
+tbl.getTopWindow = function()
+    local win = 0
+    local top = 10000
+    for i=1,#tbl.windows do
+        if tbl.windows[i] and tbl.windows[i].z < top then
+            win = i
+            top = tbl.windows[win].z
+        end
+    end
+    return win
+end
+tbl.onPassableEvent = function(event)
+    local win = tbl.getTopWindow()
+    if not win then return end
+    tbl.drawTopBar(win)
+    term.redirect(tbl.windows[win].term)
+    system.core.programs.resume(tbl.windows[win].pid,event)
+    term.redirect(tbl.parentTerm)
+end
+local getnthwindow = function(orderIndex)
+    local current = 1 -- normal start
+    for i=1,#tbl.windows do
+        if tbl.windows[i] and tbl.windows[i].z == orderIndex then
+            return i
+        end
+    end
+end
+local isInBounds = function(event,winIndex)
+    if not tbl.windows[winIndex] then
+        return false
+    end
+    local x,y = event[3], event[4]
+    local w = tbl.windows[winIndex]
+    local wx,wy = w.window.getPosition()
+    local ww,wh = w.window.getSize()
+    if x>=wx and x<wx+ww and y>=wy and y<wy+wh then
+        return y==wy and "win" or "term" -- whether click was on the top bar
+        -- which has buttons and can move the term window around
+    end
+end
+local getWindow = function(event)
+    for i=1,#tbl.windows do
+        local windowIndex = getnthwindow(i)
+        local state = isInBounds(event,windowIndex)
+        if state then
+            return windowIndex,state
+        end
+    end
+end
+tbl.drawTopBar = function(windowIndex)
+    local sysWin = tbl.windows[windowIndex].window
+    local w = sysWin.getSize()
+    term.redirect(sysWin)
+    term.setCursorPos(1,1)
+    term.setBackgroundColor(colors.gray)
+    term.clearLine()
+    term.write(tbl.windows[windowIndex].name)
+    term.setCursorPos(w-2,1)
+    term.blit("#_X","777","d4e")
+    term.redirect(tbl.parentTerm)
+end
+tbl.redrawTerm = function(windowIndex)
+    local sysWin = tbl.windows[windowIndex].window
+    local termWin = tbl.windows[windowIndex].term
+    term.redirect(sysWin)
+    termWin.redraw()
+    term.redirect(tbl.parentTerm)
+end
+tbl.redrawWindows = function(exclusion)
+    tbl.parentTerm.clear()
+    local str = ""
+    for i=#tbl.windows,1,-1 do
+        local win = getnthwindow(i)
+        if win and win ~= exclusion and tbl.windows[i] then
+            str = str.." win:"..i..":"..tbl.windows[i].z.."."
+            tbl.windows[win].window.redraw()
+        end
+    end
+end
+local makeOffsetForWindow = function(event,windowIndex)
+    local modEvent = {event[1],event[2],event[3],event[4]}
+    local x,y = tbl.windows[windowIndex].window.getPosition()
+    modEvent[3] = event[3] - x + 1
+    modEvent[4] = event[4] - y + 1
+    return modEvent
+end
+local makeOffsetForTerm = function(event,windowIndex)
+    local modEvent = makeOffsetForWindow(event,windowIndex)
+    modEvent[4] = modEvent[4] - 1
+    return modEvent
+end
+local onWinBarClick = function(event,windowIndex)
+    local w = tbl.windows[windowIndex].window.getSize()
+    local event = makeOffsetForWindow(event,windowIndex)
+    if event[3] == w then
+        tbl.onTerminateEvent({"terminate"})
+    elseif event[3] == w-1 then
+        if tbl.windows[windowIndex].state == "minimized" then
+            tbl.defaultSize(windowIndex)
+        else
+            tbl.minimize(windowIndex)
+        end
+    elseif event[3] == w-2 then
+        if tbl.windows[windowIndex].state == "normal" then
+            tbl.maximize(windowIndex)
+        elseif tbl.windows[windowIndex].state == "maximized" then
+            tbl.defaultSize(windowIndex)
+        end
+    end
+    if event[3] > w-3 then
+        --tbl.mouseState = nil
+    else
+        tbl.redrawWindows()
+    end
+end
+tbl.onMouseClick = function(event)
+    local windowIndex,state = getWindow(event)
+    if windowIndex and windowIndex >= 0 then
+        tbl.setFocus(tbl.windows[windowIndex].pid)
+    end
+    if state == "win" then
+        tbl.mouseState = {windowIndex=windowIndex,event=event}
+        onWinBarClick(event,windowIndex)
+    elseif state == "term" then
+        local pid = tbl.windows[windowIndex].pid
+        event = makeOffsetForTerm(event,windowIndex)
+        tbl.onPassableEvent(event)
+    end
+end
+tbl.onMouseDrag = function(event)
+    local windowIndex,state = getWindow(event)
+    if state == "win" or tbl.mouseState then    
+        if not tbl.mouseState then
+            tbl.mouseState = {windowIndex=windowIndex,event=event}
+        end
+        -- move window by dragging on any part of the top bar
+        local px,py = tbl.mouseState.event[3],tbl.mouseState.event[4]
+        local x,y = event[3],event[4]
+        local offx,offy = x-px,y-py
+        local xPos,yPos = tbl.windows[
+            tbl.mouseState.windowIndex].window.getPosition()
+        xPos = xPos + offx
+        yPos = yPos + offy -- TODO: refactor/change names of these
+        tbl.windows[tbl.mouseState.windowIndex].window.reposition(xPos,yPos)
+        tbl.redrawWindows()
+        tbl.mouseState = {windowIndex=tbl.mouseState.windowIndex,event=event}
+    elseif state == "term" then
+        local pid = tbl.windows[windowIndex].pid
+        event = makeOffsetForTerm(event,windowIndex)
+        tbl.onPassableEvent(event)
+    end
+end
+tbl.onMouseScroll = function(event)
+    local windowIndex,state = getWindow(event)
+    if state == "term" then
+        local pid = tbl.windows[windowIndex].pid
+        event = makeOffsetForTerm(event,windowIndex)
+        tbl.onPassableEvent(event)
+    end
+end
+tbl.onMouseEvent = function(event)
+    if event[1] == "mouse_up" then
+        tbl.mouseState = nil
+    elseif event[1] == "mouse_click" then
+        tbl.onMouseClick(event)
+    elseif event[1] == "mouse_drag" then
+        tbl.onMouseDrag(event)
+    elseif event[1] == "mouse_scroll" then
+        tbl.onMouseScroll(event)
+    end
+end
+tbl.onKeyEvent = tbl.onPassableEvent
+tbl.onTerminateEvent = function(event,forcedPID)
+    local win = tbl.getTopWindow()
+    local pid = forcedPID and forcedPID or tbl.windows[win].pid
+    if pid < 1 then
+        system.core.wm.exitWM()
+    else
+        tbl.onPassableEvent(event)
+        if not system.core.programs.isAlive(pid) then
+            tbl.removeWindow(pid)
+            tbl.redrawWindows()
+        end
+    end
+end
+tbl.onCharEvent = tbl.onPassableEvent
+tbl.onPasteEvent = tbl.onPassableEvent
+tbl.onTimerEvent = tbl.onPassableEvent --TODO: PER PROCESS TIMERS
+tbl.onAlarmEvent = tbl.onPassableEvent
+tbl.onDiskEvent = tbl.onPassableEvent
+tbl.onPeripheralEvent = tbl.onPassableEvent
+tbl.onHttpEvent = tbl.onPassableEvent
+tbl.onMonitorEvent = tbl.onPassableEvent -- TODO: ADD MONITOR SUPPORT
+tbl.onTermEvent = tbl.onPassableEvent
+
+tbl.exitWM = function()
+    error("exiting WM")
+end
+return tbl
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
