@@ -42,8 +42,7 @@ system.core.programs.runProgram("bin/test.lua")
 system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
 system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
 
---
-system.core.wm.setFocus(1)
+--system.core.wm.setFocus(1)
 system.core.wm.initWM()
 -- put program-available system functions into global.
 -- this is of course loaded by core/programs; env.sys = _G.sys

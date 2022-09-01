@@ -12,10 +12,15 @@ local system = args[1]
 --    parentTerm
 local tbl = {
     links = {},
-    settings = {maxWindows = 10}, -- default, enables window init before
-    -- initWM() call, which may be desirable
+    settings = {
+    maxWindows = 10, -- allow createWindow calls before initWM()
+    bufferScreen = true, -- buffer the screen. potential performance hit,
+    -- but completely gets rid of flickering
+    spoofInitPrograms = true, -- send a nothing event to allow
+    -- programs to initialize before interacting with them
+    },
     windows = {},
-    parentTerm = term.current(),
+    parentTerm = window.create(term.current(),1,1,term.getSize()),
     mouseState = false
 }
 local _getnewindex = function()
@@ -65,7 +70,10 @@ tbl.createWindow = function(pid,parentTerm,isMaximized)
     tbl.windows[index].name = tbl.windows[index].name..
         " $pid: "..tbl.windows[index].pid..
         ", $win: "..index
-    --tbl.drawTopBar(index)
+    tbl.drawTopBar(index)
+    if tbl.settings.spoofInitPrograms then
+        tbl.onPassableEvent(pid,{})
+    end
     tbl.redrawWindows()
 end
 
@@ -106,6 +114,7 @@ tbl.requestNewWindow = function(x,y,w,h)
     tbl.windows[index].name = tbl.windows[index].name..
         " $pid: "..tbl.windows[index].pid..
         ", $win: "..index
+    tbl.redrawWindows()
     return {
         toggleBar = function(bool)
             tbl.windows[index].doTopBar = bool
@@ -144,8 +153,8 @@ tbl.getWindowIndex = function(pid)
         end
     end
 end
-tbl.removeWindow = function(pid)
-    local index = tbl.getWindowIndex(pid)
+tbl.removeWindow = function(windowIndex)
+    local index = windowIndex --tbl.getWindowIndex(pid)
     local z = tbl.windows[index].z
     for i,_ in pairs(tbl.windows) do
         if i ~= index and tbl.windows[i].z > z then
@@ -153,6 +162,14 @@ tbl.removeWindow = function(pid)
         end
     end
     tbl.windows[index] = nil
+    if tbl.links[pid] then
+        for i=1,#tbl.links[pid] do
+            if tbl.links[pid][i] and tbl.links[pid][i] == index then
+                tbl.links[pid][i] = nil
+                break
+            end
+        end
+    end
 end
 tbl.checkNumWindows = function()
     if #tbl.windows > tbl.settings.maxWindows then
@@ -226,7 +243,7 @@ end
 tbl.getTopWindow = function()
     local win = 0
     local top = 10000
-    for i=1,#tbl.windows do
+    for i,_ in pairs(tbl.windows) do
         if tbl.windows[i] and tbl.windows[i].z < top then
             win = i
             top = tbl.windows[win].z
@@ -234,7 +251,15 @@ tbl.getTopWindow = function()
     end
     return win
 end
+tbl.setNameToZ = function()
+    for k,v in pairs(tbl.windows) do
+        tbl.windows[k].name = "Z:"..tbl.windows[k].z
+    end
+end
 tbl.onPassableEvent = function(event)
+    -- TEMP
+    tbl.setNameToZ()
+    -- end
     local win = tbl.getTopWindow()
     if not win then return end
     tbl.drawTopBar(win)
@@ -243,7 +268,6 @@ tbl.onPassableEvent = function(event)
     term.redirect(tbl.parentTerm)
 end
 local getnthwindow = function(orderIndex)
-    local current = 1 -- normal start
     for i,_ in pairs(tbl.windows) do
         if tbl.windows[i].z == orderIndex then
             return i
@@ -330,6 +354,9 @@ tbl.getZOrdered = function(reverse)
     return r
 end
 tbl.redrawWindows = function(exclusion)
+    if tbl.settings.bufferScreen then
+        tbl.parentTerm.setVisible(false)
+    end
     tbl.parentTerm.clear()
     local order = tbl.getZOrdered(true)
     local str = ""
@@ -340,6 +367,9 @@ tbl.redrawWindows = function(exclusion)
             tbl.drawTopBar(win)
             tbl.windows[win].window.redraw()
         end
+    end
+    if tbl.settings.bufferScreen then
+        tbl.parentTerm.setVisible(true)
     end
 end
 local makeOffsetForWindow = function(event,windowIndex)
@@ -381,7 +411,7 @@ end
 tbl.onMouseClick = function(event)
     local windowIndex,state = getWindow(event)
     if windowIndex and windowIndex >= 0 then
-        tbl.setFocus(tbl.windows[windowIndex].pid)
+        tbl.setFocusedWindow(windowIndex)
     end
     if state == "win" then
         tbl.mouseState = {windowIndex=windowIndex,event=event}
@@ -440,6 +470,8 @@ tbl.onMouseEvent = function(event)
     elseif event[1] == "mouse_scroll" then
         tbl.onMouseScroll(event)
     end
+    tbl.setNameToZ()
+    tbl.redrawWindows()
 end
 tbl.onKeyEvent = tbl.onPassableEvent
 tbl.onTerminateEvent = function(event,forcedPID)
@@ -450,7 +482,7 @@ tbl.onTerminateEvent = function(event,forcedPID)
     else
         tbl.onPassableEvent(event)
         if not system.core.programs.isAlive(pid) then
-            tbl.removeWindow(pid)
+            tbl.removeWindow(win)
             tbl.redrawWindows()
         end
     end
@@ -475,6 +507,8 @@ tbl.initWM = function()
     tbl.settings.maxWindows = 25
 end
 tbl.exitWM = function(msg)
+    term.redirect(tbl.parentTerm)
+    term.setCursorPos(1,1)
     if msg then
         error("WM crashed! Reason: "..msg)
     else
