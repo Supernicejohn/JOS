@@ -1,5 +1,5 @@
 [Part wm]
-Path /system/wms/jwm.sys
+Path /system/wms/jwm/jwm.sys
 User Kernal
 --TODO: change to User x
 Policy None

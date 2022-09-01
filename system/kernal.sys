@@ -38,11 +38,17 @@ end
 system.core.programs.runProgram("/system/d/kernal.d",0) -- 0 is kernal PID
 
 -- example program
-system.core.programs.runProgram("bin/example.lua")
+system.core.programs.runProgram("bin/test.lua")
+system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
 system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
 
---
-system.core.wm.setFocus(1)
+--system.core.wm.setFocus(1)
+system.core.wm.initWM()
+-- put program-available system functions into global.
+-- this is of course loaded by core/programs; env.sys = _G.sys
+_G.sys = {
+    requestWindow = system.core.wm.requestNewWindow
+}
 
 while true do
     system.core.event.popEvent() -- yields

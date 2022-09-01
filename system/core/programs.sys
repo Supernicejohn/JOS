@@ -6,15 +6,24 @@ local tbl = {
     pids = {}, -- number = task-index, initially the same-1
     currentFocused = 0
 }
+local safeUnpack = function(inTable)
+    if inTable and type(inTable)=="table" and #inTable>0 then
+        return table.unpack(inTable)
+    end
+end
 tbl.resume = function(pid,event)
     if tbl.pids[pid] == -1 then
         print("PID:"..pid.." has no program")
         return
     end
     local program = tbl.tasks[tbl.pids[pid]]
+    if not program then
+        -- program is not loaded yet, return
+        return
+    end
     local stat = coroutine.status(program)
     if stat == "suspended" then
-        coroutine.resume(program,table.unpack(event))
+        coroutine.resume(program,safeUnpack(event))
     elseif stat == "dead" then
         print("CORO DIED")
         if tbl.currentFocused == pid then
@@ -49,6 +58,7 @@ tbl.runProgram = function(pathArgs, forcedPID)
     end
     local func = function()
         local env = {}
+        env.sys = _G.sys
         env.arg = {path}
         env.shell = system.core.shellCompatibility.getShellInstance(path)
         os.run(env,realPath,arguments)
@@ -67,8 +77,8 @@ tbl.runProgram = function(pathArgs, forcedPID)
         if forcedPID then
             pid = forcedPID
         end
-        system.core.wm.createWindow(pid,false,false)
         tbl.pids[pid] = #tbl.tasks
+        system.core.wm.createWindow(pid,false,false)
     else
         error("could not create coroutine")
     end
@@ -76,7 +86,7 @@ end
 tbl.setFocusedPID = function(pid)
     tbl.currentFocused = pid
 end
-tbl.getFocusedPID = function(pid)
+tbl.getFocusedPID = function()
     return tbl.currentFocused
 end
 tbl.getCurrentPID = tbl.getFocusedPID
