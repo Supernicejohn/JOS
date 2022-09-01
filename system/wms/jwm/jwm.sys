@@ -11,16 +11,28 @@ local system = args[1]
 --            state - "normal", "maximized", "minimized"
 --    parentTerm
 local tbl = {
-    windows = {},
     links = {},
+    settings = {maxWindows = 10}, -- default, enables window init before
+    -- initWM() call, which may be desirable
+    windows = {},
     parentTerm = term.current(),
     mouseState = false
 }
+local _getnewindex = function()
+    local high = 0
+    for k,v in pairs(tbl.windows) do
+        if k>high then
+            high = k
+        end
+    end
+    return high+1
+end
 tbl.setFocusedWindow = function(winId)
     local pid = tbl.windows[winId].pid
     system.core.programs.setFocusedPID(pid)
 end
 tbl.createWindow = function(pid,parentTerm,isMaximized)
+    tbl.checkNumWindows()
     local parent = ""
     if not parentTerm then
         parent = tbl.parentTerm
@@ -33,7 +45,7 @@ tbl.createWindow = function(pid,parentTerm,isMaximized)
     if not isMaximized then w=51; h=18; end --leave 51,17 for compatibility
     local wrapWin = window.create(parent,x,y,w,h)
     local win = window.create(wrapWin,1,2,w,h-1)
-    local index = #tbl.windows+1
+    local index = _getnewindex()
     tbl.windows[index] = {
         pid = pid,
         term = win,
@@ -41,67 +53,131 @@ tbl.createWindow = function(pid,parentTerm,isMaximized)
         defaultDimensions = {x=x,y=y,w=w,h=h},
         z = 1,
         state = "normal",
-        name = "test"
+        name = "test",
+        hidden = false,
+        doTopBar = true
     }
-    if not tbl.links[pid] then
-        tbl.links[pid] = {}
-    end
-    tbl.links[pid][#tbl.links[pid+1] = index -- window index map to pid
-    -- each pid can have N windows, but not the other way around
-    for i=1,#tbl.windows do
+    for i,_ in pairs(tbl.windows) do
         if i ~= index and tbl.windows[i] then
             tbl.windows[i].z = tbl.windows[i].z + 1
         end
     end
     tbl.windows[index].name = tbl.windows[index].name..
-        "pid: "..tbl.windows[index].pid
+        " $pid: "..tbl.windows[index].pid..
+        ", $win: "..index
     --tbl.drawTopBar(index)
     tbl.redrawWindows()
 end
+
+tbl.requestNewWindow = function(x,y,w,h)
+    --local pid = system.core.programs.getFocusedPID()
+    tbl.checkNumWindows()
+    local pid = tbl.windows[tbl.getTopWindow()].pid
+    
+    local parentWindow = tbl.getWindowIndex(pid)
+    if not tbl.links[pid] then
+        tbl.links[pid] = {} -- new windows for PID. all windows are
+        -- still stored in tbl.windows, but this maintains links
+        -- to the same programs windows
+    end
+    local parX,parY = tbl.windows[parentWindow].window.getPosition()
+    local newX = parX + x - 1
+    local newY = parY + y - 1
+    local index = _getnewindex()
+    local win = window.create(tbl.parentTerm,newX,newY,w,h)
+    local termWin = window.create(win,1,2,w,h-1)
+    tbl.windows[index] = {
+        pid = pid,
+        term = termWin,
+        window = win,
+        defaultDimensions = {x=newX, y=newY, w=w, h=h},
+        z = 1,
+        state = "normal",
+        name = "test",
+        hidden = false,
+        doTopBar = true
+    }
+    tbl.links[pid][#tbl.links[pid]+1] = index
+    for i,_ in pairs(tbl.windows) do
+        if i~=index and tbl.windows[i] then
+            tbl.windows[i].z = tbl.windows[i].z + 1
+        end
+    end
+    tbl.windows[index].name = tbl.windows[index].name..
+        " $pid: "..tbl.windows[index].pid..
+        ", $win: "..index
+    return {
+        toggleBar = function(bool)
+            tbl.windows[index].doTopBar = bool
+        end,
+        removeWindow = function()
+            tbl.windows[index] = nil
+        end,
+        toggleVisible = function(bool)
+            tbl.windows[index].hidden = not bool
+        end,
+        getTerm = function()
+            return tbl.windows[index].term
+        end,
+        setSize = function(w,h)
+            tbl.windows[index].defaultDimensions.w = w
+            tbl.windows[index].defaultDimensions.h = h
+            tbl.defaultSize(index)
+        end,
+        setPosition = function(x,y)
+            tbl.windows[index].defaultDimensions.x = parX + x - 1
+            tbl.windows[index].defaultDimensions.y = parY + y - 1
+            tbl.defaultSize(index)
+        end,
+        bringToFront = function()
+            tbl.setFocusedWindow(index)
+        end
+    }
+end
 tbl.getWindowIndex = function(pid)
-    return tbl.links[pid] and tbl.links[pid][1] or nil
-    for i=1,#tbl.windows do
-        if tbl.windows[i] and tbl.windows[i].pid == pid then
-            return i 
+    --if tbl.links[pid] then
+    --    return tbl.links[pid][1]
+    --end
+    for k,v in pairs(tbl.windows) do
+        if tbl.windows[k].pid == pid then
+            return k
         end
     end
 end
-tbl.removeWindow = function(windowIndex)
-    for i=1,#tbl.windows do
-        if i ~= windowIndex and tbl.windows[i].z > z then
+tbl.removeWindow = function(pid)
+    local index = tbl.getWindowIndex(pid)
+    local z = tbl.windows[index].z
+    for i,_ in pairs(tbl.windows) do
+        if i ~= index and tbl.windows[i].z > z then
             tbl.windows[i].z = tbl.windows[i].z - 1
         end
     end
-    for i=windowIndex,#tbl.windows-1 do
-        tbl.windows[i] = tbl.windows[i+1]
-    end
-    tbl.windows[#tbl.windows] = nil
+    tbl.windows[index] = nil
 end
-tbl.removeWindowsByPID = function(pid)
-    for i=1,#tbl.windows do
-        if tbl.windows[i].pid == pid then
-            tbl.removeWindow(i)
-        end
+tbl.checkNumWindows = function()
+    if #tbl.windows > tbl.settings.maxWindows then
+        tbl.exitWM("Too many windows!")
     end
 end
-tbl.setFocus = function(windowIndex)
-    for i=1,#tbl.windows do
-        if tbl.windows[i] and tbl.windows[windowIndex].z and 
-            i ~= windowIndex then
+tbl.setFocusedWindow = function(windowIndex)
+    for i,_ in pairs(tbl.windows) do
+        --if tbl.windows[i] and i ~= windowIndex then
             if tbl.windows[i].z < tbl.windows[windowIndex].z then
                 tbl.windows[i].z = tbl.windows[i].z + 1
             end
-        end
+        --end
     end
     tbl.windows[windowIndex].z = 1
     tbl.drawTopBar(windowIndex)
     tbl.redrawTerm(windowIndex)
 end
-tbl.setFocusByPID = function(pid,nth)
-    local index = nth or 1
-    if tbl.links[pid] and tbl.links[pid][index] then
-        tbl.setFocus(tbl.links[pid][index])
+tbl.setFocus = function(pid)
+    for i,_ in pairs(tbl.windows) do
+        if tbl.windows[i].pid == pid then
+            return tbl.setFocusedWindow(i)
+        end
     end
+    error("PID: "..pid.." has no window")
 end
 tbl.setDefaultDimensions = function(windowIndex)
     local x,y = tbl.windows[windowIndex].window.getPosition()
@@ -168,8 +244,8 @@ tbl.onPassableEvent = function(event)
 end
 local getnthwindow = function(orderIndex)
     local current = 1 -- normal start
-    for i=1,#tbl.windows do
-        if tbl.windows[i] and tbl.windows[i].z == orderIndex then
+    for i,_ in pairs(tbl.windows) do
+        if tbl.windows[i].z == orderIndex then
             return i
         end
     end
@@ -215,11 +291,50 @@ tbl.redrawTerm = function(windowIndex)
     termWin.redraw()
     term.redirect(tbl.parentTerm)
 end
+tbl.getHighestIndex = function()
+    local max = 0
+    for k,v in pairs(tbl.windows) do
+        if k>max then
+            max = k
+        end
+    end
+    return max
+end
+tbl.getZOrdered = function(reverse)
+    local zs = {}
+    local max = 0
+    for k,v in pairs(tbl.windows) do
+        zs[k] = v.z
+        if k>max then
+            max = k
+        end
+    end
+    for i=1,max do
+        if not zs[i] then
+            zs[i] = -9999
+        end
+    end
+    table.sort(zs)
+    for i=1,#zs do
+        if zs[i] == -9999 then
+            zs[i] = nil
+        end
+    end
+    if not reverse then 
+        return zs
+    end
+    local r = {}
+    for i=#zs,1,-1 do
+        r[#r+1] = zs[i]
+    end
+    return r
+end
 tbl.redrawWindows = function(exclusion)
     tbl.parentTerm.clear()
+    local order = tbl.getZOrdered(true)
     local str = ""
-    for i=#tbl.windows,1,-1 do
-        local win = getnthwindow(i)
+    for i=1,#order do
+        local win = getnthwindow(order[i])
         if win and win ~= exclusion and tbl.windows[i] then
             str = str.." win:"..i..":"..tbl.windows[i].z.."."
             tbl.drawTopBar(win)
@@ -266,7 +381,7 @@ end
 tbl.onMouseClick = function(event)
     local windowIndex,state = getWindow(event)
     if windowIndex and windowIndex >= 0 then
-        tbl.setFocus(windowIndex)
+        tbl.setFocus(tbl.windows[windowIndex].pid)
     end
     if state == "win" then
         tbl.mouseState = {windowIndex=windowIndex,event=event}
@@ -281,7 +396,8 @@ tbl.onMouseDrag = function(event)
     local windowIndex,state = getWindow(event)
     if state == "win" or tbl.mouseState then    
         if not tbl.mouseState then
-            tbl.mouseState = {windowIndex=windowIndex,event=event}
+            return
+            --tbl.mouseState = {windowIndex=windowIndex,event=event}
         end
         -- move window by dragging on any part of the top bar
         local px,py = tbl.mouseState.event[3],tbl.mouseState.event[4]
@@ -301,10 +417,16 @@ tbl.onMouseDrag = function(event)
     end
 end
 tbl.onMouseScroll = function(event)
-    local windowIndex,state = getWindow(event)
-    if state == "term" then
-        local pid = tbl.windows[windowIndex].pid
-        event = makeOffsetForTerm(event,windowIndex)
+    if tbl.settings.scrollStrict then
+        local windowIndex,state = getWindow(event)
+        if state == "term" then
+            local pid = tbl.windows[windowIndex].pid
+            if pid == tbl.windows[tbl.getTopWindow()].pid then
+                event = makeOffsetForTerm(event,windowIndex)
+                tbl.onPassableEvent(event)
+            end
+        end
+    else
         tbl.onPassableEvent(event)
     end
 end
@@ -328,7 +450,7 @@ tbl.onTerminateEvent = function(event,forcedPID)
     else
         tbl.onPassableEvent(event)
         if not system.core.programs.isAlive(pid) then
-            tbl.removeWindowsByPID(pid)
+            tbl.removeWindow(pid)
             tbl.redrawWindows()
         end
     end
@@ -345,13 +467,19 @@ tbl.onTermEvent = tbl.onPassableEvent
 
 
 tbl.initWM = function()
-    for i=1,#tbl.windows do
-        tbl.setFocus(i)
+    for i,v in pairs(tbl.windows) do
+        tbl.setFocusedWindow(i)
     end
     tbl.redrawWindows()
+    tbl.settings.scrollStrict = true
+    tbl.settings.maxWindows = 25
 end
-tbl.exitWM = function()
-    error("exiting WM")
+tbl.exitWM = function(msg)
+    if msg then
+        error("WM crashed! Reason: "..msg)
+    else
+        error("exiting WM")
+    end
 end
 return tbl
 

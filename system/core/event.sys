@@ -2,7 +2,8 @@ local args = {...}
 local system = args[1] -- internal system table, passed as arg
 
 local tbl = {
-    systemTimers = {}
+    systemTimers = {},
+    programTimers = {}
 }
 
 local consumeKeyEvent = function(event)
@@ -29,14 +30,19 @@ local consumeTerminateEvent = function(event)
     end
 end
 local consumeMouseEvent = function(event)
-    system.core.wm.onMouseEvent(event) -- may pass execution to program
+    system.core.wm.onMouseEvent(event) 
 end
 local consumeTimerEvent = function(event)
     if tbl.systemTimers[event[2]] then
         --tbl.handleSystemTimer(event)
     else
-        -- TEMP: do this task-by-task later
-        system.core.wm.onTimerEvent(event)
+        local pid = tbl.findTimerPID(event[2])
+        if pid and pid ~= system.core.programs.getFocusedPID() then
+            system.core.programs.resume(pid,event)
+        else
+            -- handle better, and as failsafe
+            system.core.wm.onTimerEvent(event)
+        end
     end
 end
 local consumeOtherEvent = function(event)
@@ -51,6 +57,7 @@ tbl.handles = {
     mouse_drag = consumeMouseEvent,
     mouse_scroll = consumeMouseEvent,
     timer = consumeTimerEvent,
+    alarm = consumeTimerEvent,
     terminate = consumeTerminateEvent,
     default = consumeOtherEvent
 }
@@ -78,4 +85,50 @@ end
 tbl.pushEvent = function(pid,event)
     tbl.queue[#tbl.queue+1] = event
 end
+tbl.findTimerPID = function(uid)
+    for k,v in pairs(tbl.programTimers) do
+        for i=1,#tbl.programTimers[k] do
+            if tbl.programTimers[k][i] == uid then
+                return k -- PID
+            end
+        end
+    end
+end
+tbl.initEvent = function()
+    local oldTimer = os.startTimer
+    local oldAlarm = os.setAlarm
+    local oldCancel = os.cancelAlarm
+    os.startTimer = function(time)
+        local pid = system.core.programs.getFocusedPID()
+        if not tbl.programTimers[pid] then
+            tbl.programTimers[pid] = {}
+        end
+        local uid = oldTimer(time)
+        tbl.programTimers[pid][#tbl.programTimers[pid]+1] = uid
+        return uid
+    end
+    os.setAlarm = function(time)
+        local pid = system.core.programs.getFocusedPID()
+        if not tbl.programTimers[pid] then
+            tbl.programTimers[pid] = {}
+        end
+        local uid = oldAlarm(time)
+        tbl.programTimers[pid][#tbl.programTimers[pid]+1] = uid
+        return uid        
+    end
+    os.cancelAlarm = function(uid)
+        local pid = tbl.findTimerPID(uid)
+        if pid then
+            oldCancel(uid)
+        end
+    end
+end
+
+
 return tbl
+
+
+
+
+
+

@@ -49,6 +49,7 @@ tbl.runProgram = function(pathArgs, forcedPID)
     end
     local func = function()
         local env = {}
+        env.sys = _G.sys
         env.arg = {path}
         env.shell = system.core.shellCompatibility.getShellInstance(path)
         os.run(env,realPath,arguments)
@@ -76,7 +77,7 @@ end
 tbl.setFocusedPID = function(pid)
     tbl.currentFocused = pid
 end
-tbl.getFocusedPID = function(pid)
+tbl.getFocusedPID = function()
     return tbl.currentFocused
 end
 tbl.getCurrentPID = tbl.getFocusedPID
