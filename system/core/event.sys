@@ -29,14 +29,18 @@ local consumeTerminateEvent = function(event)
         system.core.wm.onTerminateEvent(event)
     end
 end
-local consumeMouseEvent = function(event)
-    system.core.wm.onMouseEvent(event) 
+local consumeMouseEvent = function(event,isPushed)
+    if isPushed then
+        system.core.wm.onMouseEvent(event)
+    else
+        system.core.peripheral.mouse.consumeEvent(event)
+    end
 end
 local consumeTimerEvent = function(event)
     if tbl.systemTimers[event[2]] then
-        --tbl.handleSystemTimer(event)
+        tbl.onSystemTimer(event[2])
     else
-        local pid = tbl.findTimerPID(event[2])
+        local pid = tbl.programTimers[event[2]]
         if pid and pid ~= system.core.programs.getFocusedPID() then
             system.core.programs.resume(pid,event)
         else
@@ -46,7 +50,10 @@ local consumeTimerEvent = function(event)
     end
 end
 local consumeOtherEvent = function(event)
-    print("no handler:"..event[1])
+    system.core.programs.resume(0,{
+        "unknown_event",
+        event[1]
+    })
 end
 tbl.handles = {
     key = consumeKeyEvent,
@@ -64,11 +71,12 @@ tbl.handles = {
 tbl.queue = {}
 tbl.popEvent = function() -- event queue only used if not empty
     local event = false
+    local isPushed = false
     if #tbl.queue == 0 then
         event = {coroutine.yield()}
     else
+        isPushed = true
         event = tbl.queue[1]
-        --table.remove(tbl,1) --hmmmmm
         for i=1, #tbl.queue-1 do
             tbl.queue[i] = tbl.queue[i+1]
         end
@@ -77,53 +85,47 @@ tbl.popEvent = function() -- event queue only used if not empty
     
     if tbl.handles[event[1]] then
         -- event handler exists
-        tbl.handles[event[1]](event)
+        tbl.handles[event[1]](event,isPushed)
     else
-        tbl.handles.default(event)
+        tbl.handles.default(event,isPushed)
     end
 end
 tbl.pushEvent = function(pid,event)
     tbl.queue[#tbl.queue+1] = event
 end
-tbl.findTimerPID = function(uid)
-    for k,v in pairs(tbl.programTimers) do
-        for i=1,#tbl.programTimers[k] do
-            if tbl.programTimers[k][i] == uid then
-                return k -- PID
-            end
-        end
-    end
-end
 tbl.initEvent = function()
-    local oldTimer = os.startTimer
-    local oldAlarm = os.setAlarm
-    local oldCancel = os.cancelAlarm
+    tbl.timer = os.startTimer
+    tbl.alarm = os.setAlarm
+    tbl.cancelAlarm = os.cancelAlarm
     os.startTimer = function(time)
         local pid = system.core.programs.getFocusedPID()
-        if not tbl.programTimers[pid] then
-            tbl.programTimers[pid] = {}
-        end
-        local uid = oldTimer(time)
-        tbl.programTimers[pid][#tbl.programTimers[pid]+1] = uid
+        local uid = tbl.timer(time)
+        tbl.programTimers[uid] = pid
         return uid
     end
     os.setAlarm = function(time)
         local pid = system.core.programs.getFocusedPID()
-        if not tbl.programTimers[pid] then
-            tbl.programTimers[pid] = {}
-        end
-        local uid = oldAlarm(time)
-        tbl.programTimers[pid][#tbl.programTimers[pid]+1] = uid
+        local uid = tbl.alarm(time)
+        tbl.programTimers[uid] = pid
         return uid        
     end
     os.cancelAlarm = function(uid)
-        local pid = tbl.findTimerPID(uid)
-        if pid then
-            oldCancel(uid)
-        end
+        tbl.cancelAlarm(uid)
+        tbl.programTimers[uid] = nil
     end
 end
-
+tbl.registerSystemTimer = function(time,pid,callback)
+    local timerId = tbl.timer(time)
+    tbl.systemTimers[timerId] = {pid = pid, callback = callback}
+end
+tbl.onSystemTimer = function(timerId)
+    local t = tbl.systemTimers[timerId]
+    if not t.pid then
+        t.callback()
+    else
+        system.core.programs.resume(t.pid,{"timer",timerId})
+    end
+end
 
 return tbl
 

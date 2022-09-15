@@ -82,6 +82,9 @@ tbl.enablePart = function(partName)
     end
     local partFile = loadfile(system.core.coreFs.getRootedPath(
         tbl.parts[partName].Path))
+    if not partFile then
+        error("could not load part "..partName)
+    end
     tbl.parts[partName].Mod = partFile(system)
     system.core[partName] = tbl.parts[partName].Mod
     tbl.logMessage(partName,"loaded")
