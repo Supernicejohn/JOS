@@ -6,7 +6,7 @@ term.setBackgroundColor(randcolor)
 term.setTextColor(colors.white)
 term.clear()
 while true do
-    local event = {coroutine.yield()}
+    local event = {os.pullEvent()}
     if event[1] == "terminate" then
         break
     else

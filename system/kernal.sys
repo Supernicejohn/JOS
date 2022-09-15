@@ -24,10 +24,15 @@ system.core.partloader.initPart("peripheral.p")
 system.core.partloader.initPart("event.p")
 system.core.partloader.initPart("programs.p")
 system.core.partloader.initPart("shellCompat.p")
---system.core.wm = loadfile(coreFs.getRootedPath(
---    "system/wms/swin.sys"))(system)
 system.core.partloader.initPart("wm.p")
---system.core.wm.createWindow(1,term.current(),false)
+_G.sys = {
+    requestWindow = system.core.wm.requestNewWindow,
+    getSystemTable = function() 
+        if system.core.programs.getCurrentPID() == 0 then
+            return system
+        end
+    end
+}
 
 
 local kernalProcess = function()
@@ -35,20 +40,17 @@ local kernalProcess = function()
         system.core.internal.resume({coroutine.yield()})
     end
 end
+--system.core.peripheral.mouse.init()
+system.core.programs.runProgram("/bin/example.lua",21)
+
 system.core.programs.runProgram("/system/d/kernal.d",0) -- 0 is kernal PID
 
 -- example program
-system.core.programs.runProgram("bin/test.lua")
-system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
-system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua")
+system.core.programs.runProgram("bin/example.lua",42)
+--system.core.programs.runProgram("/bin/shell.lua")
+system.core.programs.runProgram("bin/edit.lua /root/bin/edit.lua",13)
 
---system.core.wm.setFocus(1)
 system.core.wm.initWM()
--- put program-available system functions into global.
--- this is of course loaded by core/programs; env.sys = _G.sys
-_G.sys = {
-    requestWindow = system.core.wm.requestNewWindow
-}
 
 while true do
     system.core.event.popEvent() -- yields

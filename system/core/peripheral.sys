@@ -3,6 +3,18 @@ local system = args[1]
 -- currently only supports left side modifiers, add duplicates
 -- to the combos table to change
 local tbl = {}
+tbl.mouse = {}
+tbl.mouse.settings = {
+    scrollSpeed = 1.5,
+    currentScroll = 0,
+    maxScroll = 4,
+    scrollTiming = 0.05,
+    buttons = {[1] = false, [2] = false, [3] = false},
+    -- extra mouse buttons seem to not be supported?
+    xpos = false,
+    ypos = false,
+    floating = {},
+}
 tbl.keyboard = {}
 tbl.keyboard.combos = { -- order matters!
     [keys.leftCtrl] = {
@@ -47,5 +59,91 @@ tbl.keyboard.isKeyCombo = function()
         system.core.event.pushEvent(0,{"system_keycombo",res},true)
     end
 end
+tbl.mouse.updatePosition = function(x,y)
+    tbl.mouse.settings.xpos = x
+    tbl.mouse.settings.ypos = y
+end
+tbl.mouse.onKeyDown = function(keyNum,x,y)
+    tbl.mouse.settings.buttons[keyNum] = 1
+    tbl.mouse.updatePosition(x,y)
+end
+tbl.mouse.onKeyHeld = function(keyNum,x,y)
+    tbl.mouse.settings.buttons[keyNum] = 2
+    tbl.mouse.updatePosition(x,y)
+end
+tbl.mouse.onKeyUp = function(keyNum,x,y)
+    tbl.mouse.settings.buttons[keyNum] = false
+    tbl.mouse.updatePosition(x,y)
+end
+tbl.mouse.onScroll = function(scrollDir,x,y)
+    local sign = tbl.mouse.settings.currentScroll == 0 and 0 or
+        (tbl.mouse.settings.currentScroll > 0 and 1 or -1)
+    if sign ~= scrollDir then
+        tbl.mouse.settings.currentScroll = 0
+    else
+        tbl.mouse.settings.currentScroll = 
+            tbl.mouse.settings.currentScroll - sign
+    end
+    tbl.mouse.settings.currentScroll = tbl.mouse.settings.currentScroll + 
+        scrollDir * tbl.mouse.settings.scrollSpeed
+    if math.abs(tbl.mouse.settings.currentScroll) > 
+        tbl.mouse.settings.maxScroll then
+        tbl.mouse.settings.currentScroll = tbl.mouse.settings.maxScroll * sign
+    end
+    tbl.mouse.updatePosition(x,y)
+    --system.core.wm.exitWM(tbl.mouse.settings.currentScroll)
+    tbl.mouse.makeScrollEvent()
+end
+tbl.mouse.makeScrollEvent = function()
+    for i=1,math.abs(tbl.mouse.settings.currentScroll) do
+        system.core.event.pushEvent(0,{
+            "mouse_scroll",
+            tbl.mouse.settings.currentScroll/
+                math.abs(tbl.mouse.settings.currentScroll),
+            tbl.mouse.settings.xpos,
+            tbl.mouse.settings.ypos
+        })
+    end
+end
+tbl.mouse.tick = function()
+    local sign = tbl.mouse.settings.currentScroll == 0 and 0 or 
+        (tbl.mouse.settings.currentScroll > 0 and 1 or -1)
+    tbl.mouse.settings.currentScroll = tbl.mouse.settings.currentScroll - sign
+    --system.core.wm.exitWM("got here")
+    system.core.event.registerSystemTimer(
+        tbl.mouse.settings.scrollTiming,
+        nil,
+        tbl.mouse.tick
+    )
+end
+tbl.mouse.init = function()
+    --system.core.wm.exitWM("here")
+    tbl.mouse.tick()
+end
+tbl.mouse.consumeEvent = function(event)
+    local passEvent = true
+    if event[1] == "mouse_click" then
+        tbl.mouse.onKeyDown(event[2],event[3],event[4])
+    elseif event[1] == "mouse_up" then
+        tbl.mouse.onKeyUp(event[2],event[3],event[4])
+    elseif event[1] == "mouse_scroll" then
+        passEvent = false
+        tbl.mouse.onScroll(event[2],event[3],event[4])
+    elseif event[1] == "mouse_drag" then
+        tbl.mouse.onKeyHeld(event[2],event[3],event[4])
+    end
+    if passEvent then
+        system.core.event.pushEvent(0,event)
+    end
+end
+
+
+
+
+
+
+
+
+
 
 return tbl

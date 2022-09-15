@@ -1,8 +1,18 @@
-
-
+--optionsTable:
+--    callback
+--    options
+--        [x]
+--            name
 
 local tbl = {}
+tbl.
 
-tbl.drawCurrentOptions = function(x,y,optionsTable)
+tbl.drawOptionsWindow = function(x,y,w,h,optionsTable)
+    local win = sys.requestWindow(x,y,w,h)
+    local t = win.getTerm()
+    for i=1,#optionsTable.options do
+        t.setCursorPos(1,i)
+        t.write(optionsTable.options[i].name:sub(1,w))
+    end
     
 end

@@ -61,6 +61,7 @@ tbl.runProgram = function(pathArgs, forcedPID)
         env.sys = _G.sys
         env.arg = {path}
         env.shell = system.core.shellCompatibility.getShellInstance(path)
+        --system.core.wm.exitWM("env.sys: "..env.sys)
         os.run(env,realPath,arguments)
     end
     local coro = coroutine.create(func)
