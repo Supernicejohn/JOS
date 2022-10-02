@@ -1,18 +1,94 @@
 --optionsTable:
---    callback
---    options
---        [x]
---            name
+--    selectedIndex
+--    options{} OR action()
+--        options[x] is an optionsTable
 
 local tbl = {}
-tbl.
 
-tbl.drawOptionsWindow = function(x,y,w,h,optionsTable)
-    local win = sys.requestWindow(x,y,w,h)
-    local t = win.getTerm()
-    for i=1,#optionsTable.options do
-        t.setCursorPos(1,i)
-        t.write(optionsTable.options[i].name:sub(1,w))
+-- for creating WM-managed free-floating windows with an options hierarchy.
+-- will let the user select 1 option at any depth in a structure as described
+tbl.getMenuCreator = function()
+    local t = {}
+    t.windows = {}
+    t.hierarchy = {}
+    t.waitForInput = function()
+        local e = {os.pullEvent()}
+        if e[1] == "mouse_click" then
+            return t.clickedAt(e[3],e[4],e[5]) 
+            -- WM handles sending correct window as event[5]
+        elseif e[1] == "key" then
+            return t.keyPressed(e[2])
+        end
     end
+    t.newOptionsWindow = function(options,infoTable)
+        local newIndex = #t.windows+1
+        t.windows[newIndex] = sys.requestNewWindow(
+            infoTable.x+infoTable.w,
+            infoTable.selectedY,
+            20,
+            #options)
+        t.windows[newIndex].bringToFront()
+        return newIndex
+    end
+    t.onOptionPath = function(depth,selected)
+        local dTable = t.hierarchy[depth].items[selected]
+        if dTable.options then
+            local met = {}
+            met.x, met.y = t.windows[depth].getPosition()
+            met.w, met.h = t.windows[depth].getSize()
+            met.selectedY = selected
+            -- remove any windows with higher index,
+            -- ex. if deep menu was brought up, but then a click on an
+            -- earlier window (option) happened. Bring up new window, 
+            -- delete older ones with higher index..
+            for i=depth+1, #t.windows do
+                t.windows[i].removeWindow()
+            end
+            t.newOptionsWindow(dTable.options,met)
+        else
+            for i=1,#t.windows do
+                t.windows[i].removeWindow()
+            end
+            -- remove all option windows on action
+            dTable.action()
+        end
+    end
+    t.create = function(optionsTable)
+        t.newOptionsWindow(optionsTable.options)
+        t.hierarchy[1] = optionsTable
+    end
+    t.yield = function()
+        -- loop until non-options-menu related event
+        while true do
+            local e = {os.pullEvent()}
+            if e[1] == "mouse_click" and e[5] then
+                t.onClicked(e[3],e[4],e[5])
+            else
+                return e[1],e[2],e[3],e[4],e[5]
+            end
+        end
+    end
+    return t
+end
+
+tbl.getInstanceUI = function()
+    local t = {}
     
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
