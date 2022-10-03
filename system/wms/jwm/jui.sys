@@ -248,6 +248,33 @@ tbl.getInstanceUI = function(termInstance)
 		end
 		return com
 	end
+	t.getBasicToggle = function()
+		local com = t.getBasicComponent()
+		com.toggled = false
+		com.toggle = function(bool)
+			com.toggled = bool
+		end
+		com.show = function()
+			com._showsetup()
+			com._clear()
+			for j=1,com.h do
+				com.term.setBackgroundColor(com.bg)
+				com.term.setTextColor(com.altbg)
+				for i=1,com.w/2 do
+					com.term.setCursorPos(com.x+i-1,com.y+j-1)
+					com.term.write("#")
+				end
+				com.term.setBackgroundColor(com.fg)
+				com.term.setTextColor(com.altfg)
+				for i=com.w/2+1,com.w do
+					com.term.setCursorPos(com.x+i-1,com.y+j-1)
+					com.term.write(" ")
+				end
+			end
+			com._showend()
+		end
+		return com
+	end
 	t.getBasicContainer = function()
 		local con = t.getBasicComponent()
 		con.term = window.create(t.term,1,1,10,10)
@@ -262,7 +289,7 @@ tbl.getInstanceUI = function(termInstance)
 		end
 		con._showend = function()
 			con.term.setVisible(true)
-			con.term.redraw()
+			--con.term.redraw()
 		end
 		return con
 	end
@@ -273,7 +300,12 @@ tbl.getInstanceUI = function(termInstance)
 		con.setMaxSize = function(w,h)
 			con.maxwidth=w; con.maxheight=h
 		end
-		
+		con.show = function()
+			con._showsetup()
+			con.drawHorizontalScrollbar()
+			con.drawVerticalScrollbar()
+			con._showend()
+		end
 		return con
 	end
 
