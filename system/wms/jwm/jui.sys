@@ -71,9 +71,125 @@ tbl.getMenuCreator = function()
     return t
 end
 
-tbl.getInstanceUI = function()
+tbl.getInstanceUI = function(termInstance)
     local t = {}
-    
+    t.term = termInstance
+    t.getBasicComponent = function()
+        local com = {}
+        com.x=0;com.y=0;com.w=0;com.h=0,
+        com.fg=colors.white;com.bg=colors.black
+        altfg=colors.lightGray;altbg=colors.darkGray
+        com.buffer=true
+        com.title=""
+        com.desctiption=""
+        com.onaction = function() end -- event like click, enter
+        com.ondelete = function() end
+        com.onfocus =  function() end
+        com.onevent =  function() end -- general event 
+        com.show =     function() end -- render component
+        com.oninterval=function() end
+        com._showsetup = function()
+            if com.buffer then t.term.setVisible(false) end
+            t.term.setTextColor(com.fg)
+            t.term.setBackgroundColor(com.bg)
+            t.term.setCursorPos(com.x,com.y)
+        end
+        com._showend = function()
+            if com.buffer then t.term.setVisible(true) end
+            -- keep buffering?
+        end
+        com._clear = function()
+            local s = ""
+            for i=1, com.w do
+                s = s.." " -- TODO: make this better
+            end
+            for i=com.y, i<com.y+com.h do
+                t.term.setCursorPos(com.x,i)
+                t.term.write(s)
+            end
+        end
+        com.setCallback = function(callback)
+            com.callback = callback
+        end
+        return com
+    end
+    t.getBasicInputBox = function()
+        local com = t.getBasicComponent()
+        com.textField = ""
+        com.isInBlink = false
+        com.onevent = function(event)
+            if event[1]=="char" then
+                com.textField = com.textField..event[2]
+            end
+            if event[1]=="key" then
+                if event[2]==keys.enter then
+                    com.onaction()
+                elseif event[2]==keys.backspace then
+                    com.textField = com.textField:sub(1,#com.textField-1)
+                end
+            end
+        end
+        com.show = function()
+            com._showsetup()
+            com._clear()
+            local len = #com.textField
+            local start = (com.w-1)>len and 1 or len-com.w-1
+            t.term.write(com.textField:sub(start,#com.textField))
+            t.term.setCursorPos(com.x+com.w-1,com.y)
+            if com.isInBlink then
+                t.term.write("_")
+            end
+            com._showend()
+        end
+        com.oninterval = function()
+            com.isInBlink = not com.isInBlink
+        end
+        com.onaction = function()
+            local str = com.textField
+            com.textField = ""
+            com._clear()
+            return com.callback(str)
+        end
+        return com
+    end
+    t.getBasicButton = function(callback)
+        local com = t.getBasicComponent()
+        com.bg = colors.green
+        com.altbg = colors.darkGreen
+        com.bgSwapped = false
+        com.onaction = function()
+            com.focus()
+            callback()
+        end
+        com.show = function()
+            com._showstart()
+            com._clear()
+            t.term.setCursorPos(com.x,com.y)
+            t.term.write(com.title:sub(1,com.w))
+            com._showend()
+        end
+        com.onevent = function(event)
+            if event[1] == "mouse_up" then
+                -- if component still has focus, but mouse_up rec.
+                com.unfocus()
+            end
+        end
+        com.focus = function()
+            local temp = com.bg
+            com.bg = com.altbg
+            com.altbg = com.bg
+            com.bgSwapped = true
+            com.show()
+        end
+        com.unfocus = function()
+            if com.isFocused then
+                local temp = com.bg
+                com.bg = com.altbg
+                com.altbg = temp
+            end
+        end
+        return com
+    end
 end
 
 
