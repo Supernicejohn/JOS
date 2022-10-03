@@ -10,6 +10,7 @@ local system = args[1]
 --            z - order/height
 --            state - "normal", "maximized", "minimized"
 --    parentTerm
+local rootTerm = term.current()
 local tbl = {
     links = {},
     settings = {
@@ -24,7 +25,8 @@ local tbl = {
     minimumHeight = 5,
     },
     windows = {},
-    parentTerm = window.create(term.current(),1,1,term.getSize()),
+    rootTerm = rootTerm,
+    parentTerm = window.create(rootTerm,1,1,term.getSize()),
     mouseState = false
 }
 local _getnewindex = function()
@@ -44,7 +46,11 @@ tbl.createWindow = function(pid,parentTerm,isMaximized)
     tbl.checkNumWindows()
     local parent = ""
     if not parentTerm then
-        parent = tbl.parentTerm
+        if tbl.settings.bufferScreen then
+            parent = tbl.parentTerm
+        else
+            parent = tbl.rootTerm
+        end
     else
         parent = parentTerm
     end
@@ -96,7 +102,11 @@ tbl.requestNewWindow = function(x,y,w,h)
     local newX = parX + x - 1
     local newY = parY + y - 1
     local index = _getnewindex()
-    local win = window.create(tbl.parentTerm,newX,newY,w,h)
+    local parentTerm = tbl.parentTerm
+    if not tbl.settings.bufferScreen then
+        parentTerm = tbl.rootTerm
+    end
+    local win = window.create(parentTerm,newX,newY,w,h)
     local termWin = window.create(win,1,2,w,h-1)
     tbl.windows[index] = {
         pid = pid,
@@ -122,12 +132,20 @@ tbl.requestNewWindow = function(x,y,w,h)
     return {
         toggleBar = function(bool)
             tbl.windows[index].doTopBar = bool
+            local cSize = {tbl.windows[windowIndex].window.getSize()}
+            if bool then
+                tbl.windows[index].term.reposition(1,2,cSize[1],cSize[2]-1)
+            else
+                tbl.windows[index].term.reposition(1,1,cSize[1],cSize[2])
+            end
         end,
         removeWindow = function()
-            tbl.windows[index] = nil
+            tbl.removeWindow(index)
         end,
         toggleVisible = function(bool)
             tbl.windows[index].hidden = not bool
+            tbl.windows[index].window.reposition(-100,-100)
+            -- goes far off screen (hopefully)
         end,
         getTerm = function()
             return tbl.windows[index].term
@@ -141,6 +159,9 @@ tbl.requestNewWindow = function(x,y,w,h)
             tbl.windows[index].defaultDimensions.x = parX + x - 1
             tbl.windows[index].defaultDimensions.y = parY + y - 1
             tbl.defaultSize(index)
+        end,
+        getPosition = function()
+            return tbl.windows[index].getPosition()
         end,
         bringToFront = function()
             tbl.setFocusedWindow(index)
@@ -190,7 +211,9 @@ tbl.setFocusedWindow = function(windowIndex)
         --end
     end
     tbl.windows[windowIndex].z = 1
-    tbl.drawTopBar(windowIndex)
+    if tbl.windows[windowIndex].doTopBar then
+        tbl.drawTopBar(windowIndex)
+    end
     tbl.redrawTerm(windowIndex)
 end
 tbl.setFocus = function(pid)
@@ -225,7 +248,11 @@ tbl.maximize = function(windowIndex)
         tbl.setDefaultDimensions(windowIndex)
     end
     win.window.reposition(1,1,w,h)
-    win.term.reposition(1,2,w,h-1)
+    if win.doTopBar then
+        win.term.reposition(1,2,w,h-1)
+    else
+        win.term.reposition(1,1,w,h)
+    end
     win.state = "maximized"
     tbl.redrawWindows()
     
@@ -244,7 +271,11 @@ tbl.defaultSize = function(windowIndex)
     win.defaultDimensions.w = w
     local size = win.defaultDimensions
     win.window.reposition(size.x,size.y,size.w,size.h)
-    win.term.reposition(1,2,size.w,size.h-1)
+    if win.doTopBar then
+        win.term.reposition(1,2,size.w,size.h-1)
+    else
+        win.term.reposition(1,1,size.w,size.h)
+    end
     tbl.redrawWindows()
     win.state = "normal"
     tbl.onPassableEvent({"term_resize",size.w,size.h-1})
@@ -293,6 +324,9 @@ local isInBounds = function(event,winIndex)
     local wx,wy = w.window.getPosition()
     local ww,wh = w.window.getSize()
     if x>=wx and x<wx+ww and y>=wy and y<wy+wh then
+        if not tbl.windows[winIndex].doTopBar then
+            return "term"
+        end
         return y==wy and "win" or "term" -- whether click was on the top bar
         -- which has buttons and can move the term window around
     end
@@ -375,8 +409,12 @@ tbl.redrawWindows = function(exclusion)
         local win = getnthwindow(order[i])
         if win and win ~= exclusion and tbl.windows[win] then
             str = str.." win:"..win..":"..tbl.windows[win].z.."."
-            tbl.drawTopBar(win)
-            tbl.windows[win].window.redraw()
+            if not tbl.windows[win].hidden then
+                if tbl.windows[win].doTopBar then
+                    tbl.drawTopBar(win)
+                end
+                tbl.windows[win].window.redraw()
+            end
         end
     end
     if tbl.settings.bufferScreen then
@@ -400,7 +438,9 @@ local makeOffsetForWindow = function(event,windowIndex)
 end
 local makeOffsetForTerm = function(event,windowIndex)
     local modEvent = makeOffsetForWindow(event,windowIndex)
-    modEvent[4] = modEvent[4] - 1
+    if tbl.windows[windowIndex].doTopBar then
+        modEvent[4] = modEvent[4] - 1
+    end
     return modEvent
 end
 local onWinBarClick = function(event,windowIndex)
@@ -487,7 +527,14 @@ tbl.onMouseDrag = function(event)
         if changed then
             tbl.windows[tbl.mouseState.windowIndex].window.reposition(
                 xPos,yPos,wPos,hPos)
-            tbl.setDefaultDimensions(tbl.mouseState.windowIndex)
+            if not (wState == "minimized") then
+                tbl.setDefaultDimensions(tbl.mouseState.windowIndex)
+            else
+                tbl.windows[tbl.mouseState.windowIndex].defaultDimensions.x =
+                    xPos
+                tbl.windows[tbl.mouseState.windowIndex].defaultDimensions.y =
+                    yPos
+            end
             if not tbl.settings.fastResize then
                 tbl.defaultSize(tbl.mouseState.windowIndex)
             end
