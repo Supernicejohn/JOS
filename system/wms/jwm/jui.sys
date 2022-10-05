@@ -71,10 +71,29 @@ tbl.getMenuCreator = function()
     return t
 end
 
+-- Instance
+-- 		+onevent()
+--	components
+--		(Basic, Text, Input, Toggle, Button)
+--			+onevent(), +ondelete(), +onaction(), etc.
+--	containers
+--		(Basic, Scroll, Layouted)
+--	layouts
+--		(Basic, Fill, Horizontal, Vertical)
 tbl.getInstanceUI = function(termInstance)
     local t = {}
     t.term = termInstance
-	t.
+	t.container = t.getBasicContainer()
+	t.onevent = function(event) -- pass all events to this
+	-- will propagate and update all components in this instance
+		t.container.onevent(event)
+		return t
+	end
+	-- component is actually the super of container,
+	-- since component has all basic functionality,
+	-- while container gets the additional nesting and window
+	-- management features. Container acts like a component
+	-- to enable agnostic parent calls (com/con deciphers).
     t.getBasicComponent = function()
         local com = {}
         com.x=1;com.y=1;com.w=0;com.h=0;com.z=1
@@ -275,8 +294,19 @@ tbl.getInstanceUI = function(termInstance)
 		end
 		return com
 	end
+	--Containers:
+	-- containers enable the nesting of layouts and simplify
+	-- making areas of options, text, input et.c.
+	-- containers can be plain, no ordering or features,
+	-- with scroll bars, and with layouts. Any container
+	-- directly nested in another container just passes any
+	-- events directly in its onevent() logic.
+	-- for example one may want to place a LayoutedContainer
+	-- inside a ScrollContainer
 	t.getBasicContainer = function()
 		local con = t.getBasicComponent()
+		con.components = {}
+		con.focused = 0 -- index of focused component
 		con.term = window.create(t.term,1,1,10,10)
 		con.setPos = function(x,y)
 			con.term.reposition(x,y,con.w,con.h)
@@ -291,6 +321,94 @@ tbl.getInstanceUI = function(termInstance)
 			con.term.setVisible(true)
 			--con.term.redraw()
 		end
+		con._clear = function()
+			con.term.clear()
+		end
+		con.show = function()
+			con._showsetup()
+			con._clear()
+			local drawn = {}
+			for i=0, #con.components do
+				local highest = -1
+				for j=0, #con.components do
+					if not drawn[j] then
+						if highest == -1 or con.components[j] > 
+							con.components[highest] then
+							highest = j
+						end
+					end
+				end
+				con.components[highest].show()
+				drawn[highest] = true
+			end
+			con._showend()
+		end
+		con.add = function(c) -- adds a component or container
+			con.components[#con.components+1] = c
+		end
+		con.remove = function(c) -- removes a com/con
+			for i=1,#con.components do
+				if con.components[i] == c then
+					if con.focused > i then
+						con.focused = con.focused - 1
+					elseif con.focused == i then
+						con.focused = 0
+					end
+					for j=i,#con.components-1 do
+						con.components[j] = con.components[j+1]
+					end
+					con.components[#con.components] = nil
+				end
+			end
+		end
+		con.onevent = function(event)
+			if con._handles[event[1]] then
+				con._handles[event[1]](event)
+			end
+		end
+		con._locationIntersectsFor = function(x,y,compIndex)
+			local c = con.components[compIndex]
+			if c.x <= x and c.x+c.w-1 >= x and 
+				c.y <= y and c.y+c.h-1 >= y then
+				return true
+			end
+			return false -- :]
+		end
+		con._makeOffsetFor = function(x,y,compIndex)
+			if not con.components[compIndex] then
+				return
+			end
+			local cx = con.components[compIndex].x
+			local cy = con.components[compIndex].y
+			return (x-cx+1),(y-cy+1)
+		end
+		con._makeEventFor = function(event,compIndex)
+			if event:sub(1,5)=="mouse" then
+				return {event[1],event[2],
+					con._makeOffsetFor(event[3],event[4],compIndex)}
+			end
+		end
+		con._getHighestAt = function(x,y)
+			local z = 0, index = 0
+			for i=1, #con.components do
+				if con._locationIntersectsFor(x,y,i) then
+					if con.components[i].z > z then
+						z = con.components[i].z
+						index = i
+					end
+				end
+			end
+			return index
+		end
+		con._handles = {
+			"mouse_click" = function(event)
+				local index = con._getHighestAt(event[3],event[4])
+				if index>0 then
+					con.components[i].onevent(
+						con._makeEventFor(event,index))
+				end
+			end,
+		}
 		return con
 	end
 	t.getScrollContainer = function()
@@ -300,6 +418,12 @@ tbl.getInstanceUI = function(termInstance)
 		con.setMaxSize = function(w,h)
 			con.maxwidth=w; con.maxheight=h
 		end
+		con.drawHorizontalScrollbar = function()
+			
+		end
+		con.drawVerticalScrollbar = function()
+
+		end
 		con.show = function()
 			con._showsetup()
 			con.drawHorizontalScrollbar()
@@ -308,22 +432,83 @@ tbl.getInstanceUI = function(termInstance)
 		end
 		return con
 	end
-
+	t.getLayoutedContainer = function()
+		local con = t.getBasicContainer()
+		con.setLayout = function(layout)
+			con.layout = layout
+		end
+	end
+	-- Layouts:
+	-- layouts work by reordering the components in a container
+	-- whenever order() is called. 
+	-- most layouts will fail silently, that is, keep
+	-- moving components outside the max dimension if not all
+	-- of them fit together
+	t.layouts = {}
+	t.layouts.basic = function()
+		local lay = {}
+		lay.comCopy = {}
+		lay.width = 0; lay.height = 0
+		lay.setComponents = function(coms)
+			lay.comCopy = coms
+		end
+		lay.setDimensions = function(w,h)
+			lay.width = w
+			lay.height = h
+		end
+		lay.order = function()
+			-- does no ordering
+		end
+		return lay
+	end
+	t.layouts.fill = function()
+		local lay = t.layouts.basic()
+		lay.order = function() -- tries to fit as many
+		-- components after another horizontally as possible,
+		-- then wraps to a new row
+			local cx=1,cy=1
+			local tallest = 1
+			for i=1,#lay.comCopy do
+				local w,h = lay.comCopy[i].getSize()
+				if lay.width > cx+w-1 then
+					if w > tallest then
+						tallest = w
+					end
+					lay.comCopy[i].setPosition(cx,cy)
+				else
+					cy = cy + tallest
+					tallest = 1
+					cx = 1
+				end
+			end
+		return lay
+	end
+	t.layouts.horizontal = function()
+		local lay = t.layouts.basic()
+		
+		lay.order = function()
+			local x = 1
+			for i=1,#lay.comCopy do
+				lay.comCopy[i].setPosition(x,1)
+				local w,h = lay.comCopy[i].getSize()
+				x = x + w
+			end
+		end
+		return lay
+	end
+	t.layouts.vertical = function()
+		local lay = t.layouts.basic()
+		
+		lay.order = function()
+			local y = 1
+			for i=1, #lay.comCopy do
+				lay.comCopy[i].setPosition(1,y)
+				local w,h = lay.comCopy[i].getSize()
+				y = y + h
+			end
+		end
+		return lay
+	end
+	return t
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
