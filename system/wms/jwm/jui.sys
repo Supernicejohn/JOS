@@ -1,7 +1,7 @@
 --optionsTable:
 --    selectedIndex
 --    options{} OR action()
---        options[x] is an optionsTable
+--    options[x] is an optionsTable
 
 local tbl = {}
 
@@ -12,503 +12,503 @@ tbl.getMenuCreator = function()
     t.windows = {}
     t.hierarchy = {}
     t.waitForInput = function()
-        local e = {os.pullEvent()}
-        if e[1] == "mouse_click" then
-            return t.clickedAt(e[3],e[4],e[5]) 
-            -- WM handles sending correct window as event[5]
-        elseif e[1] == "key" then
-            return t.keyPressed(e[2])
-        end
+    local e = {os.pullEvent()}
+    if e[1] == "mouse_click" then
+        return t.clickedAt(e[3],e[4],e[5]) 
+        -- WM handles sending correct window as event[5]
+    elseif e[1] == "key" then
+        return t.keyPressed(e[2])
+    end
     end
     t.newOptionsWindow = function(options,infoTable)
-        local newIndex = #t.windows+1
-        t.windows[newIndex] = sys.requestNewWindow(
-            infoTable.x+infoTable.w,
-            infoTable.selectedY,
-            20,
-            #options)
-        t.windows[newIndex].bringToFront()
-        return newIndex
+    local newIndex = #t.windows+1
+    t.windows[newIndex] = sys.requestNewWindow(
+        infoTable.x+infoTable.w,
+        infoTable.selectedY,
+        20,
+        #options)
+    t.windows[newIndex].bringToFront()
+    return newIndex
     end
     t.onOptionPath = function(depth,selected)
-        local dTable = t.hierarchy[depth].items[selected]
-        if dTable.options then
-            local met = {}
-            met.x, met.y = t.windows[depth].getPosition()
-            met.w, met.h = t.windows[depth].getSize()
-            met.selectedY = selected
-            -- remove any windows with higher index,
-            -- ex. if deep menu was brought up, but then a click on an
-            -- earlier window (option) happened. Bring up new window, 
-            -- delete older ones with higher index..
-            for i=depth+1, #t.windows do
-                t.windows[i].removeWindow()
-            end
-            t.newOptionsWindow(dTable.options,met)
-        else
-            for i=1,#t.windows do
-                t.windows[i].removeWindow()
-            end
-            -- remove all option windows on action
-            dTable.action()
+    local dTable = t.hierarchy[depth].items[selected]
+    if dTable.options then
+        local met = {}
+        met.x, met.y = t.windows[depth].getPosition()
+        met.w, met.h = t.windows[depth].getSize()
+        met.selectedY = selected
+        -- remove any windows with higher index,
+        -- ex. if deep menu was brought up, but then a click on an
+        -- earlier window (option) happened. Bring up new window, 
+        -- delete older ones with higher index..
+        for i=depth+1, #t.windows do
+        t.windows[i].removeWindow()
         end
+        t.newOptionsWindow(dTable.options,met)
+    else
+        for i=1,#t.windows do
+        t.windows[i].removeWindow()
+        end
+        -- remove all option windows on action
+        dTable.action()
+    end
     end
     t.create = function(optionsTable)
-        t.newOptionsWindow(optionsTable.options)
-        t.hierarchy[1] = optionsTable
+    t.newOptionsWindow(optionsTable.options)
+    t.hierarchy[1] = optionsTable
     end
     t.yield = function()
-        -- loop until non-options-menu related event
-        while true do
-            local e = {os.pullEvent()}
-            if e[1] == "mouse_click" and e[5] then
-                t.onClicked(e[3],e[4],e[5])
-            else
-                return e[1],e[2],e[3],e[4],e[5]
-            end
+    -- loop until non-options-menu related event
+    while true do
+        local e = {os.pullEvent()}
+        if e[1] == "mouse_click" and e[5] then
+        t.onClicked(e[3],e[4],e[5])
+        else
+        return e[1],e[2],e[3],e[4],e[5]
         end
+    end
     end
     return t
 end
 
 -- Instance
--- 		+onevent()
---	components
---		(Basic, Text, Input, Toggle, Button)
---			+onevent(), +ondelete(), +onaction(), etc.
---	containers
---		(Basic, Scroll, Layouted)
---	layouts
---		(Basic, Fill, Horizontal, Vertical)
+--      +onevent()
+--  components
+--      (Basic, Text, Input, Toggle, Button)
+--          +onevent(), +ondelete(), +onaction(), etc.
+--  containers
+--      (Basic, Scroll, Layouted)
+--  layouts
+--      (Basic, Fill, Horizontal, Vertical)
 tbl.getInstanceUI = function(termInstance)
     local t = {}
     t.term = termInstance
-	t.container = t.getBasicContainer()
-	t.onevent = function(event) -- pass all events to this
-	-- will propagate and update all components in this instance
-		t.container.onevent(event)
-		return t
-	end
-	-- component is actually the super of container,
-	-- since component has all basic functionality,
-	-- while container gets the additional nesting and window
-	-- management features. Container acts like a component
-	-- to enable agnostic parent calls (com/con deciphers).
+    t.container = t.getBasicContainer()
+    t.onevent = function(event) -- pass all events to this
+    -- will propagate and update all components in this instance
+    t.container.onevent(event)
+    return t
+    end
+    -- component is actually the super of container,
+    -- since component has all basic functionality,
+    -- while container gets the additional nesting and window
+    -- management features. Container acts like a component
+    -- to enable agnostic parent calls (com/con deciphers).
     t.getBasicComponent = function()
-        local com = {}
-        com.x=1;com.y=1;com.w=0;com.h=0;com.z=1
-        com.fg=colors.white;com.bg=colors.black
-        altfg=colors.lightGray;altbg=colors.darkGray
-        com.buffer=true; com.isfocused; com.term=t.term
-        com.title=""
-		com.text=""
-        com.desctiption=""
-        com.onaction = function() end -- event like click, enter
-        com.ondelete = function() end
-        com.onfocus =  function() end
-        com.onevent =  function() end -- general event 
-        com.show =     function() end -- render component
-        com.oninterval=function() end
-		com.focus =    function() end
-		com.unfocus =  function() end
-        com._showsetup = function()
-            if com.buffer then com.term.setVisible(false) end
-            com.term.setTextColor(com.fg)
-            com.term.setBackgroundColor(com.bg)
-            com.term.setCursorPos(com.x,com.y)
+    local com = {}
+    com.x=1;com.y=1;com.w=0;com.h=0;com.z=1
+    com.fg=colors.white;com.bg=colors.black
+    altfg=colors.lightGray;altbg=colors.darkGray
+    com.buffer=true; com.isfocused=false; com.term=t.term
+    com.title=""
+    com.text=""
+    com.desctiption=""
+    com.onaction = function() end -- event like click, enter
+    com.ondelete = function() end
+    com.onfocus =  function() end
+    com.onevent =  function() end -- general event 
+    com.show =     function() end -- render component
+    com.oninterval=function() end
+    com.focus =    function() end
+    com.unfocus =  function() end
+    com._showsetup = function()
+        if com.buffer then com.term.setVisible(false) end
+        com.term.setTextColor(com.fg)
+        com.term.setBackgroundColor(com.bg)
+        com.term.setCursorPos(com.x,com.y)
+    end
+    com._showend = function()
+        if com.buffer then com.term.setVisible(true) end
+        -- keep buffering?
+    end
+    com._clear = function()
+        local s = ""
+        for i=1, com.w do
+        s = s.." " -- TODO: make this better
         end
-        com._showend = function()
-            if com.buffer then com.term.setVisible(true) end
-            -- keep buffering?
+        for i=com.y, i<com.y+com.h do
+        com.term.setCursorPos(com.x,i)
+        com.term.write(s)
         end
-        com._clear = function()
-            local s = ""
-            for i=1, com.w do
-                s = s.." " -- TODO: make this better
-            end
-            for i=com.y, i<com.y+com.h do
-                com.term.setCursorPos(com.x,i)
-                com.term.write(s)
-            end
+    end
+    com.setCallback = function(callback)
+        com.callback = callback
+    end
+        com.setPos = function(x,y)
+            com.x=x; com.y=y
         end
-        com.setCallback = function(callback)
-            com.callback = callback
+        com.setSize = function(w,h)
+            com.w=w; com.h=h
         end
-		com.setPos = function(x,y)
-			com.x=x; com.y=y
-		end
-		com.setSize = function(w,h)
-			com.w=w; com.h=h
-		end
-		com.setTitle = function(txt)
-			com.title = txt
-		end
-		com.setText = function(txt)
-			com.text = txt
-		end
-		com.setDescription = function(txt)
-			com.description = txt
-		end
-        return com
+        com.setTitle = function(txt)
+            com.title = txt
+        end
+        com.setText = function(txt)
+            com.text = txt
+        end
+        com.setDescription = function(txt)
+            com.description = txt
+        end
+    return com
     end
     t.getBasicInputBox = function()
-        local com = t.getBasicComponent()
-        com.textField = ""
-        com.isInBlink = false
-        com.onevent = function(event)
-            if event[1]=="char" then
-                com.textField = com.textField..event[2]
+    local com = t.getBasicComponent()
+    com.textField = ""
+    com.isInBlink = false
+    com.onevent = function(event)
+        if event[1]=="char" then
+        com.textField = com.textField..event[2]
+        end
+        if event[1]=="key" then
+        if event[2]==keys.enter then
+            com.onaction()
+        elseif event[2]==keys.backspace then
+            com.textField = com.textField:sub(1,#com.textField-1)
+        end
+        end
+    end
+    com.show = function()
+        com._showsetup()
+        com._clear()
+        local len = #com.textField
+        local start = (com.w-1)>len and 1 or len-com.w-1
+        com.term.write(com.textField:sub(start,#com.textField))
+        com.term.setCursorPos(com.x+com.w-1,com.y)
+        if com.isInBlink then
+        com.term.write("_")
+        end
+        com._showend()
+    end
+    com.oninterval = function()
+            if not com.isfocused then
+                com.isInBlink = false
+            else
+        com.isInBlink = not com.isInBlink
             end
-            if event[1]=="key" then
-                if event[2]==keys.enter then
-                    com.onaction()
-                elseif event[2]==keys.backspace then
-                    com.textField = com.textField:sub(1,#com.textField-1)
+    end
+    com.onaction = function()
+        local str = com.textField
+        com.textField = ""
+            com._showsetup()
+        com._clear()
+            com._showend()
+        return com.callback(str)
+    end
+    return com
+    end
+    t.getBasicButton = function(callback)
+    local com = t.getBasicComponent()
+    com.bg = colors.green
+    com.altbg = colors.darkGreen
+    com.bgSwapped = false
+    com.onaction = function()
+        com.focus()
+        callback()
+    end
+    com.show = function()
+        com._showsetup()
+        com._clear()
+        com.term.setCursorPos(com.x,com.y)
+        com.term.write(com.title:sub(1,com.w))
+        com._showend()
+    end
+    com.onevent = function(event)
+        if event[1] == "mouse_up" then
+        -- if component still has focus, but mouse_up rec.
+        com.unfocus()
+        end
+    end
+    com.focus = function()
+        local temp = com.bg
+        com.bg = com.altbg
+        com.altbg = com.bg
+        com.bgSwapped = true
+        com.show()
+            com.isfocused = true
+    end
+    com.unfocus = function()
+        if com.isfocused then
+        local temp = com.bg
+        com.bg = com.altbg
+        com.altbg = temp
+                com.bgswapped = false
+        end
+    end
+    return com
+    end
+    t.getBasicTextBox = function()
+        local com = t.getBasicComponent()
+        com.show = function()
+            com._showsetup()
+            com._clear()
+            local lines = {}
+            local copy = com.text
+            local index = 1
+            while #copy > 0 do
+                if #lines[index]+copy:sub(1,copy:find("%s"))<=com.w then
+                    lines[index] = lines[index]+
+                        copy:sub(1,copy:find("%s"))
+                    copy = copy:sub(copy:find("%s")+1,#copy)
+                elseif #lines[index] == 0 then
+                    lines[index] = copy:sub(1,com.w-1)+"-"
+                    copy = copy:sub(com.w,#copy)
+                else
+                    index = index + 1
+                end
+            end
+            for i=1,#lines do
+                if i>com.h then
+                    break
+                end
+                com.term.setTextPosition(com.x,com.y+i-1)
+                com.term.write(lines[i])
+            end
+            com._showend()
+        end
+        return com
+    end
+    t.getBasicToggle = function()
+        local com = t.getBasicComponent()
+        com.toggled = false
+        com.toggle = function(bool)
+            com.toggled = bool
+        end
+        com.show = function()
+            com._showsetup()
+            com._clear()
+            for j=1,com.h do
+                com.term.setBackgroundColor(com.bg)
+                com.term.setTextColor(com.altbg)
+                for i=1,com.w/2 do
+                    com.term.setCursorPos(com.x+i-1,com.y+j-1)
+                    com.term.write("#")
+                end
+                com.term.setBackgroundColor(com.fg)
+                com.term.setTextColor(com.altfg)
+                for i=com.w/2+1,com.w do
+                    com.term.setCursorPos(com.x+i-1,com.y+j-1)
+                    com.term.write(" ")
+                end
+            end
+            com._showend()
+        end
+        return com
+    end
+    --Containers:
+    -- containers enable the nesting of layouts and simplify
+    -- making areas of options, text, input et.c.
+    -- containers can be plain, no ordering or features,
+    -- with scroll bars, and with layouts. Any container
+    -- directly nested in another container just passes any
+    -- events directly in its onevent() logic.
+    -- for example one may want to place a LayoutedContainer
+    -- inside a ScrollContainer
+    t.getBasicContainer = function()
+        local con = t.getBasicComponent()
+        con.components = {}
+        con.focused = 0 -- index of focused component
+        con.term = window.create(t.term,1,1,10,10)
+        con.setPos = function(x,y)
+            con.term.reposition(x,y,con.w,con.h)
+        end
+        con.setSize = function(w,h)
+            con.term.reposition(con.x,con.y,w,h)
+        end
+        con._showsetup= function()
+            con.term.setVisible(false)
+        end
+        con._showend = function()
+            con.term.setVisible(true)
+            --con.term.redraw()
+        end
+        con._clear = function()
+            con.term.clear()
+        end
+        con.show = function()
+            con._showsetup()
+            con._clear()
+            local drawn = {}
+            for i=0, #con.components do
+                local highest = -1
+                for j=0, #con.components do
+                    if not drawn[j] then
+                        if highest == -1 or con.components[j] > 
+                            con.components[highest] then
+                            highest = j
+                        end
+                    end
+                end
+                con.components[highest].show()
+                drawn[highest] = true
+            end
+            con._showend()
+        end
+        con.add = function(c) -- adds a component or container
+            con.components[#con.components+1] = c
+        end
+        con.remove = function(c) -- removes a com/con
+            for i=1,#con.components do
+                if con.components[i] == c then
+                    if con.focused > i then
+                        con.focused = con.focused - 1
+                    elseif con.focused == i then
+                        con.focused = 0
+                    end
+                    for j=i,#con.components-1 do
+                        con.components[j] = con.components[j+1]
+                    end
+                    con.components[#con.components] = nil
                 end
             end
         end
-        com.show = function()
-            com._showsetup()
-            com._clear()
-            local len = #com.textField
-            local start = (com.w-1)>len and 1 or len-com.w-1
-            com.term.write(com.textField:sub(start,#com.textField))
-            com.term.setCursorPos(com.x+com.w-1,com.y)
-            if com.isInBlink then
-                com.term.write("_")
+        con.onevent = function(event)
+            if con._handles[event[1]] then
+                con._handles[event[1]](event)
             end
-            com._showend()
         end
-        com.oninterval = function()
-			if not com.isfocused then
-				com.isInBlink = false
-			else
-            	com.isInBlink = not com.isInBlink
-			end
+        con._locationIntersectsFor = function(x,y,compIndex)
+            local c = con.components[compIndex]
+            if c.x <= x and c.x+c.w-1 >= x and 
+                c.y <= y and c.y+c.h-1 >= y then
+                return true
+            end
+            return false -- :]
         end
-        com.onaction = function()
-            local str = com.textField
-            com.textField = ""
-			com._showsetup()
-            com._clear()
-			com._showend()
-            return com.callback(str)
+        con._makeOffsetFor = function(x,y,compIndex)
+            if not con.components[compIndex] then
+                return
+            end
+            local cx = con.components[compIndex].x
+            local cy = con.components[compIndex].y
+            return (x-cx+1),(y-cy+1)
         end
-        return com
+        con._makeEventFor = function(event,compIndex)
+            if event:sub(1,5)=="mouse" then
+                return {event[1],event[2],
+                    con._makeOffsetFor(event[3],event[4],compIndex)}
+            end
+        end
+        con._getHighestAt = function(x,y)
+            local z = 0
+    local index = 0
+            for i=1, #con.components do
+                if con._locationIntersectsFor(x,y,i) then
+                    if con.components[i].z > z then
+                        z = con.components[i].z
+                        index = i
+                    end
+                end
+            end
+            return index
+        end
+        con._handles = {
+            ["mouse_click"] = function(event)
+                local index = con._getHighestAt(event[3],event[4])
+                if index>0 then
+                    con.components[i].onevent(
+                        con._makeEventFor(event,index))
+                end
+            end,
+        }
+        return con
     end
-    t.getBasicButton = function(callback)
-        local com = t.getBasicComponent()
-        com.bg = colors.green
-        com.altbg = colors.darkGreen
-        com.bgSwapped = false
-        com.onaction = function()
-            com.focus()
-            callback()
+    t.getScrollContainer = function()
+        local con = t.getBasicContainer()
+        con.scrollx=0;con.scrolly=0;
+        con.maxwidth=20;con.maxheight=20;
+        con.setMaxSize = function(w,h)
+            con.maxwidth=w; con.maxheight=h
         end
-        com.show = function()
-            com._showsetup()
-            com._clear()
-            com.term.setCursorPos(com.x,com.y)
-            com.term.write(com.title:sub(1,com.w))
-            com._showend()
+        con.drawHorizontalScrollbar = function()
+            
         end
-        com.onevent = function(event)
-            if event[1] == "mouse_up" then
-                -- if component still has focus, but mouse_up rec.
-                com.unfocus()
-            end
-        end
-        com.focus = function()
-            local temp = com.bg
-            com.bg = com.altbg
-            com.altbg = com.bg
-            com.bgSwapped = true
-            com.show()
-			com.isfocused = true
-        end
-        com.unfocus = function()
-            if com.isfocused then
-                local temp = com.bg
-                com.bg = com.altbg
-                com.altbg = temp
-				com.bgswapped = false
-            end
-        end
-        return com
-    end
-	t.getBasicTextBox = function()
-		local com = t.getBasicComponent()
-		com.show = function()
-			com._showsetup()
-			com._clear()
-			local lines = {}
-			local copy = com.text
-			local index = 1
-			while #copy > 0 do
-				if #lines[index]+copy:sub(1,copy:find("%s"))<=com.w then
-					lines[index] = lines[index]+
-						copy:sub(1,copy:find("%s"))
-					copy = copy:sub(copy:find("%s")+1,#copy)
-				elseif #lines[index] == 0 then
-					lines[index] = copy:sub(1,com.w-1)+"-"
-					copy = copy:sub(com.w,#copy)
-				else
-					index = index + 1
-				end
-			end
-			for i=1,#lines do
-				if i>com.h then
-					break
-				end
-				com.term.setTextPosition(com.x,com.y+i-1)
-				com.term.write(lines[i])
-			end
-			com._showend()
-		end
-		return com
-	end
-	t.getBasicToggle = function()
-		local com = t.getBasicComponent()
-		com.toggled = false
-		com.toggle = function(bool)
-			com.toggled = bool
-		end
-		com.show = function()
-			com._showsetup()
-			com._clear()
-			for j=1,com.h do
-				com.term.setBackgroundColor(com.bg)
-				com.term.setTextColor(com.altbg)
-				for i=1,com.w/2 do
-					com.term.setCursorPos(com.x+i-1,com.y+j-1)
-					com.term.write("#")
-				end
-				com.term.setBackgroundColor(com.fg)
-				com.term.setTextColor(com.altfg)
-				for i=com.w/2+1,com.w do
-					com.term.setCursorPos(com.x+i-1,com.y+j-1)
-					com.term.write(" ")
-				end
-			end
-			com._showend()
-		end
-		return com
-	end
-	--Containers:
-	-- containers enable the nesting of layouts and simplify
-	-- making areas of options, text, input et.c.
-	-- containers can be plain, no ordering or features,
-	-- with scroll bars, and with layouts. Any container
-	-- directly nested in another container just passes any
-	-- events directly in its onevent() logic.
-	-- for example one may want to place a LayoutedContainer
-	-- inside a ScrollContainer
-	t.getBasicContainer = function()
-		local con = t.getBasicComponent()
-		con.components = {}
-		con.focused = 0 -- index of focused component
-		con.term = window.create(t.term,1,1,10,10)
-		con.setPos = function(x,y)
-			con.term.reposition(x,y,con.w,con.h)
-		end
-		con.setSize = function(w,h)
-			con.term.reposition(con.x,con.y,w,h)
-		end
-		con._showsetup= function()
-			con.term.setVisible(false)
-		end
-		con._showend = function()
-			con.term.setVisible(true)
-			--con.term.redraw()
-		end
-		con._clear = function()
-			con.term.clear()
-		end
-		con.show = function()
-			con._showsetup()
-			con._clear()
-			local drawn = {}
-			for i=0, #con.components do
-				local highest = -1
-				for j=0, #con.components do
-					if not drawn[j] then
-						if highest == -1 or con.components[j] > 
-							con.components[highest] then
-							highest = j
-						end
-					end
-				end
-				con.components[highest].show()
-				drawn[highest] = true
-			end
-			con._showend()
-		end
-		con.add = function(c) -- adds a component or container
-			con.components[#con.components+1] = c
-		end
-		con.remove = function(c) -- removes a com/con
-			for i=1,#con.components do
-				if con.components[i] == c then
-					if con.focused > i then
-						con.focused = con.focused - 1
-					elseif con.focused == i then
-						con.focused = 0
-					end
-					for j=i,#con.components-1 do
-						con.components[j] = con.components[j+1]
-					end
-					con.components[#con.components] = nil
-				end
-			end
-		end
-		con.onevent = function(event)
-			if con._handles[event[1]] then
-				con._handles[event[1]](event)
-			end
-		end
-		con._locationIntersectsFor = function(x,y,compIndex)
-			local c = con.components[compIndex]
-			if c.x <= x and c.x+c.w-1 >= x and 
-				c.y <= y and c.y+c.h-1 >= y then
-				return true
-			end
-			return false -- :]
-		end
-		con._makeOffsetFor = function(x,y,compIndex)
-			if not con.components[compIndex] then
-				return
-			end
-			local cx = con.components[compIndex].x
-			local cy = con.components[compIndex].y
-			return (x-cx+1),(y-cy+1)
-		end
-		con._makeEventFor = function(event,compIndex)
-			if event:sub(1,5)=="mouse" then
-				return {event[1],event[2],
-					con._makeOffsetFor(event[3],event[4],compIndex)}
-			end
-		end
-		con._getHighestAt = function(x,y)
-			local z = 0, index = 0
-			for i=1, #con.components do
-				if con._locationIntersectsFor(x,y,i) then
-					if con.components[i].z > z then
-						z = con.components[i].z
-						index = i
-					end
-				end
-			end
-			return index
-		end
-		con._handles = {
-			"mouse_click" = function(event)
-				local index = con._getHighestAt(event[3],event[4])
-				if index>0 then
-					con.components[i].onevent(
-						con._makeEventFor(event,index))
-				end
-			end,
-		}
-		return con
-	end
-	t.getScrollContainer = function()
-		local con = t.getBasicContainer()
-		con.scrollx=0;con.scrolly=0;
-		con.maxwidth=20;con.maxheight=20;
-		con.setMaxSize = function(w,h)
-			con.maxwidth=w; con.maxheight=h
-		end
-		con.drawHorizontalScrollbar = function()
-			
-		end
-		con.drawVerticalScrollbar = function()
+        con.drawVerticalScrollbar = function()
 
-		end
-		con.show = function()
-			con._showsetup()
-			con.drawHorizontalScrollbar()
-			con.drawVerticalScrollbar()
-			con._showend()
-		end
-		return con
-	end
-	t.getLayoutedContainer = function()
-		local con = t.getBasicContainer()
-		con.setLayout = function(layout)
-			con.layout = layout
-		end
-	end
-	-- Layouts:
-	-- layouts work by reordering the components in a container
-	-- whenever order() is called. 
-	-- most layouts will fail silently, that is, keep
-	-- moving components outside the max dimension if not all
-	-- of them fit together
-	t.layouts = {}
-	t.layouts.basic = function()
-		local lay = {}
-		lay.comCopy = {}
-		lay.width = 0; lay.height = 0
-		lay.setComponents = function(coms)
-			lay.comCopy = coms
-		end
-		lay.setDimensions = function(w,h)
-			lay.width = w
-			lay.height = h
-		end
-		lay.order = function()
-			-- does no ordering
-		end
-		return lay
-	end
-	t.layouts.fill = function()
-		local lay = t.layouts.basic()
-		lay.order = function() -- tries to fit as many
-		-- components after another horizontally as possible,
-		-- then wraps to a new row
-			local cx=1,cy=1
-			local tallest = 1
-			for i=1,#lay.comCopy do
-				local w,h = lay.comCopy[i].getSize()
-				if lay.width > cx+w-1 then
-					if w > tallest then
-						tallest = w
-					end
-					lay.comCopy[i].setPosition(cx,cy)
-				else
-					cy = cy + tallest
-					tallest = 1
-					cx = 1
-				end
-			end
-		return lay
-	end
-	t.layouts.horizontal = function()
-		local lay = t.layouts.basic()
-		
-		lay.order = function()
-			local x = 1
-			for i=1,#lay.comCopy do
-				lay.comCopy[i].setPosition(x,1)
-				local w,h = lay.comCopy[i].getSize()
-				x = x + w
-			end
-		end
-		return lay
-	end
-	t.layouts.vertical = function()
-		local lay = t.layouts.basic()
-		
-		lay.order = function()
-			local y = 1
-			for i=1, #lay.comCopy do
-				lay.comCopy[i].setPosition(1,y)
-				local w,h = lay.comCopy[i].getSize()
-				y = y + h
-			end
-		end
-		return lay
-	end
-	return t
+        end
+        con.show = function()
+            con._showsetup()
+            con.drawHorizontalScrollbar()
+            con.drawVerticalScrollbar()
+            con._showend()
+        end
+        return con
+    end
+    t.getLayoutedContainer = function()
+        local con = t.getBasicContainer()
+        con.setLayout = function(layout)
+            con.layout = layout
+        end
+    end
+    -- Layouts:
+    -- layouts work by reordering the components in a container
+    -- whenever order() is called. 
+    -- most layouts will fail silently, that is, keep
+    -- moving components outside the max dimension if not all
+    -- of them fit together
+    t.layouts = {}
+    t.layouts.basic = function()
+        local lay = {}
+        lay.comCopy = {}
+        lay.width = 0; lay.height = 0
+        lay.setComponents = function(coms)
+            lay.comCopy = coms
+        end
+        lay.setDimensions = function(w,h)
+            lay.width = w
+            lay.height = h
+        end
+        lay.order = function()
+            -- does no ordering
+        end
+        return lay
+    end
+    t.layouts.fill = function()
+        local lay = t.layouts.basic()
+        lay.order = function() -- tries to fit as many
+        -- components after another horizontally as possible,
+        -- then wraps to a new row
+            local cx, cy = 1,1
+            local tallest = 1
+            for i=1,#lay.comCopy do
+                local w,h = lay.comCopy[i].getSize()
+                if lay.width > cx+w-1 then
+                    if w > tallest then
+                        tallest = w
+                    end
+                    lay.comCopy[i].setPosition(cx,cy)
+                else
+                    cy = cy + tallest
+                    tallest = 1
+                    cx = 1
+                end
+            end
+        end
+        return lay
+    end
+    t.layouts.horizontal = function()
+        local lay = t.layouts.basic()
+        lay.order = function()
+            local x = 1
+            for i=1,#lay.comCopy do
+                lay.comCopy[i].setPosition(x,1)
+                local w,h = lay.comCopy[i].getSize()
+                x = x + w
+            end
+        end
+        return lay
+    end
+    t.layouts.vertical = function()
+        local lay = t.layouts.basic()        
+        lay.order = function()
+            local y = 1
+            for i=1, #lay.comCopy do
+                lay.comCopy[i].setPosition(1,y)
+                local w,h = lay.comCopy[i].getSize()
+                y = y + h
+            end
+        end
+        return lay
+    end
+    return t
 end
 
